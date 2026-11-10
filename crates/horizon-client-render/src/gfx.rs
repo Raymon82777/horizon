@@ -13926,13 +13926,14 @@ mod tests {
             order(GraphicsApi::OpenGl, "linux", "x86_64"),
             [Backends::GL]
         );
-        // WGPU_BACKEND picks the backends itself; macOS has Metal only.
+        // WGPU_BACKEND picks the backends itself; macOS and iOS have Metal only.
         for api in GraphicsApi::ALL {
             assert_eq!(
                 backend_order(api, "windows", "aarch64", true),
                 [Backends::default()]
             );
             assert_eq!(order(api, "macos", "aarch64"), [Backends::default()]);
+            assert_eq!(order(api, "ios", "aarch64"), [Backends::default()]);
         }
     }
     #[test]
