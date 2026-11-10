@@ -45,6 +45,7 @@ members = [
     "crates/cargo-horizon-mod",
     "crates/horizon-port-pack",
     "crates/horizon-shaders",
+    "crates/horizon-ios",
     "crates/horizon-optifine",
     "crates/horizon-polytone",
     "crates/horizon-shader-api",
@@ -79,6 +80,9 @@ large_enum_variant = "allow"
 # Drop this and the folder once a wgpu release has these fixes.
 [patch.crates-io]
 wgpu-hal = { path = "third_party/wgpu-hal" }
+# winit 0.30.13 with an embedded iOS mode: a host app that runs UIApplicationMain itself (the
+# SwiftUI shell in ios/, UIScene lifecycle) hosts the loop, and windows attach to its scene.
+winit = { path = "third_party/winit" }
 # naga 30.0.1, with the fixes to its GLSL frontend that shader packs need (THIRD_PARTY_NOTICES.md).
 naga = { path = "third_party/naga" }
 # libmimalloc-sys 0.1.49 whose mimalloc v3 counts bits without POPCNT when MSVC builds it: the
