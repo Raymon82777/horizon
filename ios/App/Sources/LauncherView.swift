@@ -1,13 +1,15 @@
 import SwiftUI
 
 /// The launcher: the game's resources (assembled on the device), world settings, and Play.
-/// Sign-in and downloading the game come in later milestones (ios/ROADMAP.md).
+/// Signs in with Microsoft (Accounts); downloading the game comes next (ios/ROADMAP.md).
 struct LauncherView: View {
     @AppStorage("world") private var world = "New World"
     @AppStorage("seed") private var seed = ""
     @AppStorage("renderDistance") private var renderDistance = 8.0
     @AppStorage("creative") private var creative = true
     @StateObject private var installer = Installer()
+    @StateObject private var accounts = Accounts()
+    @State private var launching = false
 
     var body: some View {
         HStack(spacing: 32) {
@@ -17,6 +19,9 @@ struct LauncherView: View {
                 Text("Minecraft: Java Edition 26.3, in Rust")
                     .foregroundStyle(.secondary)
                 status.padding(.top, 8)
+                AccountView(accounts: accounts)
+                    .padding(.top, 12)
+                    .frame(maxWidth: 360, alignment: .leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -37,7 +42,7 @@ struct LauncherView: View {
                         .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(installer.state != .ready)
+                .disabled(installer.state != .ready || launching || accounts.busy)
             }
             .frame(width: 320)
         }
@@ -79,6 +84,20 @@ struct LauncherView: View {
                     "--world", world, "--render-distance", String(Int(renderDistance))]
         if !seed.isEmpty { args += ["--seed", seed] }
         if creative { args.append("--creative") }
-        GameBridge.run(arguments: args)
+        guard let account = accounts.current else {
+            GameBridge.run(arguments: args)
+            return
+        }
+        launching = true
+        accounts.error = nil
+        Task {
+            defer { launching = false }
+            do {
+                let session = try await accounts.sessionFile(for: account)
+                GameBridge.run(arguments: args + ["--session-file", session.path])
+            } catch {
+                accounts.error = error.localizedDescription
+            }
+        }
     }
 }

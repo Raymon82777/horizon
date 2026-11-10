@@ -10,6 +10,7 @@ ios/
   rust/winit/          winit 0.30.13 + embedded iOS mode (patched in via the root Cargo.toml)
   sync-upstream.sh     fetch + merge upstream/main + check the iOS build
   ROADMAP.md           milestones toward a self-contained launcher
+  SIGN_IN_SETUP.md     the Azure app and Mojang approval Microsoft sign-in needs
   IOS_SPIKE.md         the original feasibility spike and measurements
   THIRD_PARTY_NOTICES.md
 ```

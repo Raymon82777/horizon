@@ -33,8 +33,8 @@ Resources
 
 ### M2: Microsoft sign-in
 - [ ] **Ray:** register an Azure app (personal Microsoft account, public client, redirect `horizon-ios://auth`), then **ask Mojang to approve the app ID for the Minecraft services API**. New app IDs get 403 from `api.minecraftservices.com` until approved, and upstream forbids borrowing another launcher's ID.
-- [ ] Swift: ASWebAuthenticationSession (auth code + PKCE), XBL → XSTS → `login_with_xbox`, entitlement check (`/entitlements/mcstore`), profile; tokens in the Keychain; refresh
-- [ ] Hand the session to the game the way the desktop launcher does (`--session-file`, read once and deleted), so online-mode servers work
+- [x] Swift (`ios/App/Sources/Auth/`): ASWebAuthenticationSession (auth code + PKCE), XBL → XSTS → `login_with_xbox`, entitlement check, profile; tokens in the Keychain; several accounts; renewal and owner check at every Play. Untested against the live services until the Azure app is approved (`ios/SIGN_IN_SETUP.md`)
+- [x] Hand the session to the game the way the desktop launcher does (`--session-file`, 0600 in Caches, read once and deleted)
 
 ### M3: download the game on the device
 - [ ] Owner-gated: only after the entitlement check passes (upstream's rule, #4942)

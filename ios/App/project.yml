@@ -66,3 +66,4 @@ targets:
       - sdk: CoreGraphics.framework
       - sdk: CoreFoundation.framework
       - sdk: Security.framework
+      - sdk: AuthenticationServices.framework
