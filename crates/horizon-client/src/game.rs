@@ -375,6 +375,7 @@ mod player_equip;
 pub(crate) mod player_hooks;
 mod player_spawn;
 mod pointer_capture;
+mod touch_input; // ios: touch controls
 #[cfg(test)]
 mod portal_ticking_tests;
 mod postprocess;
@@ -5833,6 +5834,7 @@ impl Game<'_> {
         self.frame_graph
             .draw(self.settings.horizon.overlay, &mut batch, &self.gui.atlas);
         self.draw_pad_over_hud(&mut batch);
+        self.draw_touch_over_hud(&mut batch); // ios: touch controls
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {

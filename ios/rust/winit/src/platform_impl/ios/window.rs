@@ -183,6 +183,10 @@ impl Inner {
     pub fn pre_present_notify(&self) {}
 
     pub fn inner_position(&self) -> Result<PhysicalPosition<i32>, NotSupportedError> {
+        // Horizon iOS: the inner area is the whole window (see `inner_size`).
+        if true {
+            return self.outer_position();
+        }
         let safe_area = self.safe_area_screen_space();
         let position =
             LogicalPosition { x: safe_area.origin.x as f64, y: safe_area.origin.y as f64 };
@@ -211,6 +215,13 @@ impl Inner {
     }
 
     pub fn inner_size(&self) -> PhysicalSize<u32> {
+        // Horizon iOS: the drawable is the whole view, the Dynamic Island and home indicator
+        // included, as winit 0.31's `surface_size` reports; upstream 0.30 gives the safe area.
+        self.outer_size()
+    }
+
+    #[allow(dead_code)]
+    fn safe_area_size(&self) -> PhysicalSize<u32> {
         let scale_factor = self.scale_factor();
         let safe_area = self.safe_area_screen_space();
         let size = LogicalSize {

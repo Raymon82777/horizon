@@ -452,17 +452,18 @@ impl Game<'_> {
 impl Game<'_> {
     /// The analog move vector (`[left, forward]`, -1..1) while a device moves the player.
     pub(super) fn input_move(&self) -> Option<[f32; 2]> {
-        self.pad_move()
+        self.touch_move().or_else(|| self.pad_move()) // ios: touch joystick
     }
 
     /// Whether a device holds the key mapping named `mapping` (`key.use`).
     pub(super) fn input_holds(&self, mapping: &str) -> bool {
-        self.pad.holds_action(mapping)
+        self.pad.holds_action(mapping) || self.touch_holds(mapping) // ios: touch buttons
     }
 
     /// Turns the view by what the devices give this frame (`Entity.turn`).
     pub(super) fn input_look(&mut self, seconds: f32) {
         self.pad_look(seconds);
+        self.touch_frame(); // ios: touch hold-to-attack
     }
 
     /// The keyboard or mouse acted in play (a key or button pressed): it has control again, though

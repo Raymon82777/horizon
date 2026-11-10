@@ -28,7 +28,7 @@ Resources
 - [x] `ios/rust/horizon-ios`: static library, `horizon_ios_run(argc, argv)`; `entry::set_args` replaces the process command line
 - [x] `ios/App`: xcodegen SwiftUI app with a UIScene lifecycle, memory entitlements, 64 MiB main stack; Play with world, seed, mode and render distance
 - [x] Runs on the iPhone with resources copied in: a real iOS 27.2 SDK build with a UIScene lifecycle, no `vtool` stamp (2026-11-10)
-- [ ] Fill the whole screen: the game view keeps to the safe area (2250×1146 of 2622×1206)
+- [x] Fill the whole screen (winit's `inner_size` is the whole view, as 0.31's `surface_size`)
 - [ ] Lifecycle: save on `suspended` / `exiting` / memory warning; stop rendering in the background
 
 ### M2: Microsoft sign-in
@@ -49,7 +49,9 @@ Resources
 - [ ] Note: the worldgen/*.json and damage-types.json bundles are copied from the prepared tree although they derive from the jar; a public facts pack should regenerate them on assemble instead.
 
 ### M5: play on a phone
-- [ ] Touch: winit `Touch` events into the touch stack already on upstream main (`horizon-client-render/src/touch/`: layout, aim, state machine, input runtime); on-screen keyboard for chat and signs
+- [x] Touch (`crates/horizon-client/src/game/touch_input.rs`): upstream's touch layout and aim helpers, driven through the pad's paths (`input_move`, `input_look`, `pad_action`). Joystick, drag to look, tap to use, hold to mine, layout buttons, hotbar taps; a finger is the mouse in menus
+- [x] On-screen keyboard bar (winit): Esc and Hide over the keyboard, Return as Enter
+- [ ] Two-finger scroll in lists; a layout editor (move and resize buttons); touch settings saved to a file
 - [ ] GameController (`GCController`) and Bluetooth keyboard and mouse (`GCMouse`, pointer lock)
 - [ ] Phone defaults: GUI scale, resolution scale, SDR versus HDR, 120 Hz pacing, battery mode; safe areas
 

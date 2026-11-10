@@ -2,9 +2,9 @@
 use std::cell::{Cell, RefCell};
 
 use objc2::rc::Retained;
-use objc2::runtime::{NSObjectProtocol, ProtocolObject};
+use objc2::runtime::{AnyClass, AnyObject, NSObjectProtocol, ProtocolObject};
 use objc2::{declare_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass};
-use objc2_foundation::{CGFloat, CGPoint, CGRect, MainThreadMarker, NSObject, NSSet, NSString};
+use objc2_foundation::{CGFloat, CGPoint, CGRect, CGSize, MainThreadMarker, NSObject, NSSet, NSString};
 use objc2_ui_kit::{
     UICoordinateSpace, UIEvent, UIForceTouchCapability, UIGestureRecognizer,
     UIGestureRecognizerDelegate, UIGestureRecognizerState, UIKeyInput, UIPanGestureRecognizer,
@@ -31,6 +31,9 @@ pub struct WinitViewState {
     rotation_last_delta: Cell<CGFloat>,
     pinch_last_delta: Cell<CGFloat>,
     pan_last_delta: Cell<CGPoint>,
+
+    // Horizon iOS: the bar over the on-screen keyboard (Esc, Hide).
+    keyboard_bar: RefCell<Option<Retained<UIView>>>,
 }
 
 declare_class!(
@@ -321,6 +324,28 @@ declare_class!(
         fn can_become_first_responder(&self) -> bool {
             true
         }
+
+        // Horizon iOS: a phone keyboard has no Escape and no way to put it away; this bar
+        // over it adds both.
+        #[method_id(inputAccessoryView)]
+        fn input_accessory_view(&self) -> Option<Retained<UIView>> {
+            let cached = self.ivars().keyboard_bar.borrow().clone();
+            let bar = cached.or_else(|| self.make_keyboard_bar());
+            *self.ivars().keyboard_bar.borrow_mut() = bar.clone();
+            bar
+        }
+
+        #[method(horizonEscape:)]
+        fn horizon_escape(&self, _sender: *mut AnyObject) {
+            self.send_named_key(NamedKey::Escape, KeyCode::Escape);
+        }
+
+        #[method(horizonHideKeyboard:)]
+        fn horizon_hide_keyboard(&self, _sender: *mut AnyObject) {
+            unsafe {
+                let _: bool = msg_send![self, resignFirstResponder];
+            }
+        }
     }
 
     unsafe impl NSObjectProtocol for WinitView {}
@@ -368,6 +393,7 @@ impl WinitView {
             rotation_last_delta: Cell::new(0.0),
             pinch_last_delta: Cell::new(0.0),
             pan_last_delta: Cell::new(CGPoint { x: 0.0, y: 0.0 }),
+            keyboard_bar: RefCell::new(None),
         });
         let this: Retained<Self> = unsafe { msg_send_id![super(this), initWithFrame: frame] };
 
@@ -541,6 +567,11 @@ impl WinitView {
     }
 
     fn handle_insert_text(&self, text: &NSString) {
+        // Horizon iOS: the keyboard's Return is the Enter key (send chat, confirm a field).
+        if text.to_string() == "\n" {
+            self.send_named_key(NamedKey::Enter, KeyCode::Enter);
+            return;
+        }
         let window = self.window().unwrap();
         let window_id = RootWindowId(window.id());
         let mtm = MainThreadMarker::new().unwrap();
@@ -576,6 +607,72 @@ impl WinitView {
                 })
             }),
         );
+    }
+
+    /// Horizon iOS: a press and release of a named key, as a hardware keyboard sends it.
+    fn send_named_key(&self, named: NamedKey, code: KeyCode) {
+        let window = self.window().unwrap();
+        let window_id = RootWindowId(window.id());
+        let mtm = MainThreadMarker::new().unwrap();
+        app_state::handle_nonuser_events(
+            mtm,
+            [ElementState::Pressed, ElementState::Released].map(|state| {
+                EventWrapper::StaticEvent(Event::WindowEvent {
+                    window_id,
+                    event: WindowEvent::KeyboardInput {
+                        device_id: DEVICE_ID,
+                        event: KeyEvent {
+                            state,
+                            logical_key: Key::Named(named),
+                            physical_key: PhysicalKey::Code(code),
+                            platform_specific: KeyEventExtra {},
+                            repeat: false,
+                            location: KeyLocation::Standard,
+                            text: None,
+                        },
+                        is_synthetic: false,
+                    },
+                })
+            }),
+        );
+    }
+
+    /// Horizon iOS: a toolbar with Esc on the left and Hide on the right.
+    fn make_keyboard_bar(&self) -> Option<Retained<UIView>> {
+        unsafe {
+            let toolbar_class = AnyClass::get("UIToolbar")?;
+            let item_class = AnyClass::get("UIBarButtonItem")?;
+            let array_class = AnyClass::get("NSArray")?;
+            let frame = CGRect { origin: CGPoint { x: 0.0, y: 0.0 }, size: CGSize { width: 320.0, height: 44.0 } };
+            let toolbar: Retained<AnyObject> =
+                msg_send_id![msg_send_id![toolbar_class, alloc], initWithFrame: frame];
+            let target: &AnyObject = &*(self as *const Self as *const AnyObject);
+            let button = |title: &str, style: isize, action| -> Retained<AnyObject> {
+                let title = NSString::from_str(title);
+                msg_send_id![
+                    msg_send_id![item_class, alloc],
+                    initWithTitle: &*title,
+                    style: style,
+                    target: target,
+                    action: action
+                ]
+            };
+            let escape = button("Esc", 0, sel!(horizonEscape:));
+            let hide = button("Hide", 2, sel!(horizonHideKeyboard:));
+            // UIBarButtonSystemItemFlexibleSpace
+            let space: Retained<AnyObject> = msg_send_id![
+                msg_send_id![item_class, alloc],
+                initWithBarButtonSystemItem: 5isize,
+                target: std::ptr::null::<AnyObject>(),
+                action: None::<objc2::runtime::Sel>
+            ];
+            let items = [&*escape as *const AnyObject, &*space, &*hide];
+            let array: Retained<AnyObject> =
+                msg_send_id![array_class, arrayWithObjects: items.as_ptr(), count: items.len()];
+            let _: () = msg_send![&*toolbar, setItems: &*array];
+            let _: () = msg_send![&*toolbar, sizeToFit];
+            Some(Retained::cast::<UIView>(toolbar))
+        }
     }
 
     fn handle_delete_backward(&self) {

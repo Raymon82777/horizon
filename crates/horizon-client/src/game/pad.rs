@@ -638,7 +638,7 @@ impl Game<'_> {
 
     /// A bound action: a vanilla mapping acts as its default key or mouse
     /// button, like a rebound keyboard key.
-    fn pad_action(&mut self, action: &str, down: bool) -> Result<()> {
+    pub(super) fn pad_action(&mut self, action: &str, down: bool) -> Result<()> {
         let Some(route) = gamepad::route(action) else {
             log::warn!("Horizon: controller action {action} has no handler");
             return Ok(());
