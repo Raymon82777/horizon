@@ -666,6 +666,11 @@ fn handle_user_events(mtm: MainThreadMarker) {
 }
 
 pub(crate) fn send_occluded_event_for_all_windows(application: &UIApplication, occluded: bool) {
+    send_window_event_for_all_windows(application, WindowEvent::Occluded(occluded));
+}
+
+/// Horizon iOS: one window event to every winit window.
+pub(crate) fn send_window_event_for_all_windows(application: &UIApplication, event: WindowEvent) {
     let mtm = MainThreadMarker::from(application);
 
     let mut events = Vec::new();
@@ -680,7 +685,7 @@ pub(crate) fn send_occluded_event_for_all_windows(application: &UIApplication, o
             };
             events.push(EventWrapper::StaticEvent(Event::WindowEvent {
                 window_id: RootWindowId(window.id()),
-                event: WindowEvent::Occluded(occluded),
+                event: event.clone(),
             }));
         }
     }

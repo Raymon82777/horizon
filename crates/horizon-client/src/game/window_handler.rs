@@ -170,6 +170,19 @@ impl Game<'_> {
         }
         self.finish_perf();
     }
+    /// ios: the world to disk before the app sits in the background (`touch_input.rs` has the
+    /// rest of the iOS layer). Single player only; a server keeps its own.
+    #[cfg(target_os = "ios")]
+    fn save_for_background(&mut self) {
+        if self.player.is_none() || self.pending_save.is_some() {
+            return;
+        }
+        let started = Instant::now();
+        match self.save_game_with(true) {
+            Ok(()) => log::info!("Horizon: saved for the background in {:?}", started.elapsed()),
+            Err(e) => log::warn!("Horizon: background save failed: {e}"),
+        }
+    }
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub(super) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
@@ -345,6 +358,11 @@ impl ApplicationHandler for Game<'_> {
         if let WindowEvent::Touch(touch) = event {
             self.touch_event(event_loop, touch);
             return;
+        }
+        // ios: the app went to the background, where iOS may end it without a word: save now.
+        #[cfg(target_os = "ios")]
+        if let WindowEvent::Occluded(true) = event {
+            self.save_for_background();
         }
         let key = if self.window.as_ref().is_some_and(|w| w.id() == id)
             && !self.scripted_run()

@@ -23,13 +23,13 @@ Resources
 
 ## Milestones
 
-### M1: the SwiftUI app hosts the game (in progress)
+### M1: the SwiftUI app hosts the game (done)
 - [x] winit 0.30.13 vendored with an embedded iOS mode (no `UIApplicationMain`, windows attach to the host's scene, nested main run loop)
 - [x] `ios/rust/horizon-ios`: static library, `horizon_ios_run(argc, argv)`; `entry::set_args` replaces the process command line
 - [x] `ios/App`: xcodegen SwiftUI app with a UIScene lifecycle, memory entitlements, 64 MiB main stack; Play with world, seed, mode and render distance
 - [x] Runs on the iPhone with resources copied in: a real iOS 27.2 SDK build with a UIScene lifecycle, no `vtool` stamp (2026-11-10)
 - [x] Fill the whole screen (winit's `inner_size` is the whole view, as 0.31's `surface_size`)
-- [ ] Lifecycle: save on `suspended` / `exiting` / memory warning; stop rendering in the background
+- [x] Lifecycle: winit sends `Focused` on resign / become active (the game pauses, `pauseOnLostFocus`); the world saves when the app enters the background (`Occluded(true)`), so closing it from the app switcher keeps everything
 
 ### M2: Microsoft sign-in
 - [ ] **Ray:** register an Azure app (personal Microsoft account, public client, redirect `horizon-ios://auth`), then **ask Mojang to approve the app ID for the Minecraft services API**. New app IDs get 403 from `api.minecraftservices.com` until approved, and upstream forbids borrowing another launcher's ID.

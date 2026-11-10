@@ -33,6 +33,7 @@ use crate::window::{CustomCursor, CustomCursorSource, Theme};
 
 use super::app_state::{send_occluded_event_for_all_windows, AppState, EventWrapper};
 use super::notification_center::create_observer;
+use crate::event::WindowEvent;
 use super::{app_state, monitor, MonitorHandle};
 
 #[derive(Debug)]
@@ -190,7 +191,12 @@ impl<T: 'static> EventLoop<T> {
             &center,
             // `applicationDidBecomeActive:`
             unsafe { UIApplicationDidBecomeActiveNotification },
-            move |_| {
+            move |notification| {
+                // Horizon iOS: the app is in front again: its windows have the focus.
+                if let Some(app) = unsafe { notification.object() } {
+                    let app: Retained<UIApplication> = unsafe { Retained::cast(app) };
+                    app_state::send_window_event_for_all_windows(&app, WindowEvent::Focused(true));
+                }
                 app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Resumed));
             },
         );
@@ -198,7 +204,13 @@ impl<T: 'static> EventLoop<T> {
             &center,
             // `applicationWillResignActive:`
             unsafe { UIApplicationWillResignActiveNotification },
-            move |_| {
+            move |notification| {
+                // Horizon iOS: a call, Control Center, the app switcher: the windows lose the
+                // focus, as a desktop window does (the game pauses, `pauseOnLostFocus`).
+                if let Some(app) = unsafe { notification.object() } {
+                    let app: Retained<UIApplication> = unsafe { Retained::cast(app) };
+                    app_state::send_window_event_for_all_windows(&app, WindowEvent::Focused(false));
+                }
                 app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Suspended));
             },
         );
