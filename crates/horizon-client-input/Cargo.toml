@@ -10,6 +10,9 @@ description = "The client's input layer: key bindings and their names, mouse, co
 horizon-client-core = { path = "../horizon-client-core" }
 winit = "0.30.13"
 png = "0.18"
+
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+# No iOS backend: arboard falls through to its X11/Wayland code there (clipboard.rs stub).
 arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
 
 [dev-dependencies]

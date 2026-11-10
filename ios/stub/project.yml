@@ -1,0 +1,17 @@
+name: HorizonStub
+options:
+  bundleIdPrefix: com.raymcdonald
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  HorizonStub:
+    type: application
+    platform: iOS
+    sources: [Stub]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.raymcdonald.horizon
+      DEVELOPMENT_TEAM: BFH3MLCK9L
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_ENTITLEMENTS: ../Horizon.entitlements
+      GENERATE_INFOPLIST_FILE: YES
+      INFOPLIST_KEY_UILaunchScreen_Generation: YES

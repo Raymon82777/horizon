@@ -106,8 +106,13 @@ impl Loading {
         // `--offscreen` renders into a texture: its window would only show white.
         let window_step = startup::step("window.create");
         let window = match event_loop.create_window(
-            attributes
-                .with_inner_size(winit::dpi::LogicalSize::new(size[0], size[1]))
+            // iOS: the window is the screen; a requested size larger than it (in points) gives
+            // a surface whose top-left corner alone shows.
+            if cfg!(target_os = "ios") {
+                attributes
+            } else {
+                attributes.with_inner_size(winit::dpi::LogicalSize::new(size[0], size[1]))
+            }
                 .with_fullscreen(fullscreen.then_some(winit::window::Fullscreen::Borderless(None)))
                 .with_visible(!self.options.as_ref().is_some_and(|o| o.offscreen)),
         ) {
@@ -233,7 +238,15 @@ impl Loading {
     pub(super) fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // The loop may run once more after exit(): keep the first error, the
         // one that ended loading.
-        if self.error.is_some() {
+        if let Some(error) = &self.error {
+            // iOS: winit ends the process inside exit(), so the caller never logs the error.
+            #[cfg(target_os = "ios")]
+            {
+                log::error!("Horizon: {error:#}");
+                horizon_client::logging::flush();
+            }
+            #[cfg(not(target_os = "ios"))]
+            let _ = error;
             event_loop.exit();
             return;
         }
