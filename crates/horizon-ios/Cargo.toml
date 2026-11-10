@@ -12,6 +12,8 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 horizon-client = { path = "../horizon-client" }
 horizon-threads = { path = "../horizon-threads" }
+# Resources without Java (facts.rs): assemble on the device.
+horizon-prepare = { path = "../horizon-prepare" }
 horizon-mods = { path = "../horizon-mods", default-features = false, features = ["index"] }
 
 [lints]

@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// The launcher: what is installed, and Play. Sign-in, downloading the game and assembling its
-/// resources come in later milestones (ios/ROADMAP.md).
+/// The launcher: the game's resources (assembled on the device), world settings, and Play.
+/// Sign-in and downloading the game come in later milestones (ios/ROADMAP.md).
 struct LauncherView: View {
     @AppStorage("world") private var world = "New World"
     @AppStorage("seed") private var seed = ""
     @AppStorage("renderDistance") private var renderDistance = 8.0
     @AppStorage("creative") private var creative = true
-    @State private var resourcesReady = false
+    @StateObject private var installer = Installer()
 
     var body: some View {
         HStack(spacing: 32) {
@@ -16,15 +16,7 @@ struct LauncherView: View {
                     .font(.system(size: 44, weight: .bold, design: .rounded))
                 Text("Minecraft: Java Edition 26.3, in Rust")
                     .foregroundStyle(.secondary)
-                Label(resourcesReady ? "Resources prepared" : "No resources in Documents/resources",
-                      systemImage: resourcesReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(resourcesReady ? .green : .orange)
-                    .padding(.top, 8)
-                if !resourcesReady {
-                    Text("Copy prepared resources into the app's Documents/resources (Files app or devicectl).")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                status.padding(.top, 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -45,17 +37,41 @@ struct LauncherView: View {
                         .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!resourcesReady)
+                .disabled(installer.state != .ready)
             }
             .frame(width: 320)
         }
         .padding(32)
-        .onAppear(perform: refresh)
+        .onAppear { installer.refresh() }
     }
 
-    private func refresh() {
-        let stamp = GameBridge.documents.appendingPathComponent("resources/horizon-prepare.json")
-        resourcesReady = FileManager.default.fileExists(atPath: stamp.path)
+    @ViewBuilder private var status: some View {
+        switch installer.state {
+        case .ready:
+            Label("Resources ready", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .needsGame:
+            Label("Minecraft 26.3 isn't installed", systemImage: "arrow.down.circle")
+                .foregroundStyle(.orange)
+            Text("For now, copy versions/26.3 and assets/ from a Minecraft folder into the app's Documents/minecraft (Files app or devicectl). Signing in and downloading comes next.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button("Check again") { installer.refresh() }
+        case .canAssemble:
+            Label("Minecraft 26.3 found", systemImage: "shippingbox")
+            Button("Build resources") { installer.assemble() }
+                .buttonStyle(.bordered)
+        case .assembling(let fraction):
+            ProgressView(value: fraction) {
+                Text("Building resources… \(Int(fraction * 100))%")
+            }
+            .frame(maxWidth: 360)
+        case .failed(let message):
+            Label("Couldn't build resources", systemImage: "xmark.octagon.fill")
+                .foregroundStyle(.red)
+            Text(message).font(.footnote).foregroundStyle(.secondary)
+            Button("Try again") { installer.refresh() }
+        }
     }
 
     private func play() {

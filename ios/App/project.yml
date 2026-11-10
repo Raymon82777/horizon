@@ -19,6 +19,18 @@ targets:
         script: |
           "$SRCROOT/build-rust.sh" "$CONFIGURATION"
         basedOnDependencyAnalysis: false
+    postCompileScripts:
+      - name: Bundle the facts pack
+        script: |
+          # The Java-derived tables (horizon-prepare pack-facts on a computer). Private: built
+          # locally into .mc/facts, never committed or published.
+          pack="$SRCROOT/../../.mc/facts/horizon-facts-26.3.zip"
+          if [ -f "$pack" ]; then
+            cp "$pack" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/"
+          else
+            echo "warning: no $pack: the app can't build resources"
+          fi
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.raymcdonald.horizon

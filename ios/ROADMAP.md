@@ -41,11 +41,12 @@ Resources
 - [ ] Version manifest → 26.3 JSON → client jar (SHA-1) and asset index and objects (about 480 MB, resumable, SHA-1 per object), into the app's Application Support
 - [ ] Libraries aren't needed on the device (no JVM); only what `assemble` reads
 
-### M4: assemble resources without Java (#1750's design)
-- [ ] `horizon-prepare pack-facts`: package only the computed tables (the data generator's reports plus the 8 exporters' output, the files in `.mc/resources` that don't come from the jar or asset store) as `horizon-facts-26.3.zip` with a SHA-256
-- [ ] `horizon-prepare assemble` as a library (`Sources { facts, client_jar, asset_index }`), called from `horizon-ios`: extracts the player's jar and assets, adds the facts and sounds, stamps `horizon-prepare.json`
+### M4: assemble resources without Java (#1750's design) (done on the device, 2026-11-10)
+- [x] `horizon-prepare pack-facts`: package only the computed tables (the data generator's reports plus the 8 exporters' output, the files in `.mc/resources` that don't come from the jar or asset store) as `horizon-facts-26.3.zip` with a SHA-256
+- [x] `horizon-prepare assemble` as a library (`Sources { facts, client_jar, asset_index }`), called from `horizon-ios`: extracts the player's jar and assets, adds the facts and sounds, stamps `horizon-prepare.json`
 - [ ] Facts hosting: a release asset on the private fork for now (personal use); public distribution waits for upstream's legal decision on #1750
-- [ ] Check: assembled-on-device resources must equal prepared-on-Mac ones (hash both trees)
+- [x] Check: assembled resources equal prepared-on-Mac ones (every file SHA-256 checked against the manifest; Mac round-trip diff is empty). The launcher's Build resources and Play work on the iPhone.
+- [ ] Note: the worldgen/*.json and damage-types.json bundles are copied from the prepared tree although they derive from the jar; a public facts pack should regenerate them on assemble instead.
 
 ### M5: play on a phone
 - [ ] Touch: winit `Touch` events into the touch stack already on upstream main (`horizon-client-render/src/touch/`: layout, aim, state machine, input runtime); on-screen keyboard for chat and signs

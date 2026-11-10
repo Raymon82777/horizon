@@ -13,6 +13,7 @@
 pub mod artifacts;
 mod check;
 pub mod exporters;
+pub mod facts;
 mod files;
 mod inventory;
 pub mod java;
