@@ -1,6 +1,6 @@
 # Horizon for iOS: self-contained launcher roadmap
 
-Fork: `Raymon82777/horizon`, long-lived branch **`ios-main`** (built on the spike in `IOS_SPIKE.md`). Upstream-able platform fixes go out as small PRs (`pr-drafts/`); iOS-only pieces live here.
+Fork: `Raymon82777/horizon`, long-lived branch **`ios-main`** (built on the spike in `IOS_SPIKE.md` (in this folder)). Upstream-able platform fixes go out as small PRs (`pr-drafts/`); iOS-only pieces live here.
 
 **Goal:** one iPhone/iPad app. Sign in with Microsoft, download Minecraft 26.3 for an account that owns it, assemble Horizon's resources on the device, and play. No computer, no JVM, no JIT.
 
@@ -11,21 +11,21 @@ SwiftUI app (ios/App)            owns UIApplicationMain + UIScene (iOS 27 requir
   ├─ Launcher UI                 sign-in, download/assemble progress, worlds, settings
   ├─ Auth (Swift)                ASWebAuthenticationSession → MSA → XBL → XSTS → Minecraft token
   ├─ Downloader (Swift or Rust)  version JSON, client jar, asset objects (Mojang, owner only)
-  └─ Play → horizon_ios_run()    crates/horizon-ios (staticlib) → horizon-client
-                                   └─ winit embedded mode (third_party/winit): the game's window
+  └─ Play → horizon_ios_run()    ios/rust/horizon-ios (staticlib) → horizon-client
+                                   └─ winit embedded mode (ios/rust/winit): the game's window
                                       attaches to the app's UIWindowScene; the game turns the
                                       main run loop from then on
 Resources
   ├─ player's own: client jar + asset store (downloaded on the device)
-  └─ facts pack: the Java-derived tables (horizon-prepare pack-facts on a computer, once per
-     version; published privately, SHA-256 pinned) → `horizon-prepare assemble` on the device
+  └─ facts pack: the Java-derived tables (horizon-facts pack-facts on a computer, once per
+     version; published privately, SHA-256 pinned) → `horizon-facts assemble` on the device
 ```
 
 ## Milestones
 
 ### M1: the SwiftUI app hosts the game (in progress)
 - [x] winit 0.30.13 vendored with an embedded iOS mode (no `UIApplicationMain`, windows attach to the host's scene, nested main run loop)
-- [x] `crates/horizon-ios`: static library, `horizon_ios_run(argc, argv)`; `entry::set_args` replaces the process command line
+- [x] `ios/rust/horizon-ios`: static library, `horizon_ios_run(argc, argv)`; `entry::set_args` replaces the process command line
 - [x] `ios/App`: xcodegen SwiftUI app with a UIScene lifecycle, memory entitlements, 64 MiB main stack; Play with world, seed, mode and render distance
 - [x] Runs on the iPhone with resources copied in: a real iOS 27.2 SDK build with a UIScene lifecycle, no `vtool` stamp (2026-11-10)
 - [ ] Fill the whole screen: the game view keeps to the safe area (2250×1146 of 2622×1206)
@@ -42,8 +42,8 @@ Resources
 - [ ] Libraries aren't needed on the device (no JVM); only what `assemble` reads
 
 ### M4: assemble resources without Java (#1750's design) (done on the device, 2026-11-10)
-- [x] `horizon-prepare pack-facts`: package only the computed tables (the data generator's reports plus the 8 exporters' output, the files in `.mc/resources` that don't come from the jar or asset store) as `horizon-facts-26.3.zip` with a SHA-256
-- [x] `horizon-prepare assemble` as a library (`Sources { facts, client_jar, asset_index }`), called from `horizon-ios`: extracts the player's jar and assets, adds the facts and sounds, stamps `horizon-prepare.json`
+- [x] `horizon-facts pack-facts`: package only the computed tables (the data generator's reports plus the 8 exporters' output, the files in `.mc/resources` that don't come from the jar or asset store) as `horizon-facts-26.3.zip` with a SHA-256
+- [x] `horizon-facts assemble` as a library (`Sources { facts, client_jar, asset_index }`), called from `horizon-ios`: extracts the player's jar and assets, adds the facts and sounds, stamps `horizon-prepare.json`
 - [ ] Facts hosting: a release asset on the private fork for now (personal use); public distribution waits for upstream's legal decision on #1750
 - [x] Check: assembled resources equal prepared-on-Mac ones (every file SHA-256 checked against the manifest; Mac round-trip diff is empty). The launcher's Build resources and Play work on the iPhone.
 - [ ] Note: the worldgen/*.json and damage-types.json bundles are copied from the prepared tree although they derive from the jar; a public facts pack should regenerate them on assemble instead.

@@ -1669,6 +1669,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "horizon-facts"
+version = "0.1.0"
+dependencies = [
+ "horizon-prepare",
+ "sha1",
+ "sha2",
+ "zip",
+]
+
+[[package]]
 name = "horizon-friends"
 version = "0.1.0"
 dependencies = [
@@ -1723,8 +1733,8 @@ name = "horizon-ios"
 version = "0.1.0"
 dependencies = [
  "horizon-client",
+ "horizon-facts",
  "horizon-mods",
- "horizon-prepare",
  "horizon-threads",
 ]
 

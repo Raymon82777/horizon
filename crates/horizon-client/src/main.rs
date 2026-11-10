@@ -15,13 +15,5 @@ static MOD_API_LEVEL: [u8; 27] = horizon_mods::api_level::MARK;
 
 fn main() {
     std::hint::black_box(&MOD_API_LEVEL);
-    // iOS starts apps in `/`, outside the sandbox: work in the app's Documents folder (Files
-    // app visible), so relative `--resources`, `--game-dir` and `--home` land there.
-    #[cfg(target_os = "ios")]
-    if let Some(home) = std::env::var_os("HOME") {
-        let docs = std::path::Path::new(&home).join("Documents");
-        let _ = std::fs::create_dir_all(&docs);
-        let _ = std::env::set_current_dir(&docs);
-    }
     horizon_client::entry::main();
 }

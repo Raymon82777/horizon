@@ -1,0 +1,50 @@
+# iOS fork only: every night, try merging upstream main into ios-main and check that the iOS
+# layer still builds. Nothing is pushed; a failure opens (or comments on) one issue.
+name: ios upstream check
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+  push:
+    branches: [ios-main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    if: github.repository == 'Raymon82777/horizon'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ios-main
+          fetch-depth: 0
+      - name: Merge upstream main
+        run: |
+          git config user.name "ios upstream check"
+          git config user.email "ios-check@users.noreply.github.com"
+          git remote add upstream https://github.com/horizon-rust/horizon.git
+          git fetch upstream main
+          echo "Upstream commits not yet in ios-main: $(git rev-list --count HEAD..upstream/main)"
+          git merge --no-edit upstream/main
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --target aarch64-apple-ios
+      - name: Check the iOS library
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        run: cargo check -p horizon-ios --target aarch64-apple-ios
+      - name: Facts round trip
+        run: cargo test -q -p horizon-facts
+      - name: Report a failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="ios: upstream main no longer merges or builds"
+          body="Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          number=$(gh issue list --state open --search "$title in:title" --json number -q '.[0].number')
+          if [ -n "$number" ]; then gh issue comment "$number" --body "$body"
+          else gh issue create --title "$title" --body "$body"; fi

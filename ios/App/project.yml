@@ -22,7 +22,7 @@ targets:
     postCompileScripts:
       - name: Bundle the facts pack
         script: |
-          # The Java-derived tables (horizon-prepare pack-facts on a computer). Private: built
+          # The Java-derived tables (horizon-facts pack-facts on a computer). Private: built
           # locally into .mc/facts, never committed or published.
           pack="$SRCROOT/../../.mc/facts/horizon-facts-26.3.zip"
           if [ -f "$pack" ]; then

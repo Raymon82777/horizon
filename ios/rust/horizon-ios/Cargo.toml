@@ -1,0 +1,20 @@
+[package]
+name = "horizon-ios"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The game as a static library for the iOS app (ios/App): one C entry point"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+horizon-client = { path = "../../../crates/horizon-client" }
+horizon-threads = { path = "../../../crates/horizon-threads" }
+# Resources without Java (horizon-facts): assemble on the device.
+horizon-facts = { path = "../horizon-facts" }
+horizon-mods = { path = "../../../crates/horizon-mods", default-features = false, features = ["index"] }
+
+[lints]
+workspace = true

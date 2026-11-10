@@ -10,13 +10,37 @@
 //! facts pack, the player's own client jar and the player's own asset store, checking every
 //! file's SHA-256, so the result is the folder a full preparation would have written.
 
-use crate::pyjson::{self, Value};
+use horizon_prepare::pyjson::{self, Value};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+
+type Zip = zip::ZipArchive<fs::File>;
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn open_zip(path: &Path) -> Result<Zip, String> {
+    let file = fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    zip::ZipArchive::new(file).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn zip_bytes(archive: &mut Zip, name: &str) -> Result<Vec<u8>, String> {
+    let mut entry = archive.by_name(name).map_err(|e| format!("{name}: {e}"))?;
+    let mut data = Vec::with_capacity(entry.size() as usize);
+    entry
+        .read_to_end(&mut data)
+        .map_err(|e| format!("{name}: {e}"))?;
+    Ok(data)
+}
+
+fn zip_text(archive: &mut Zip, name: &str) -> Result<String, String> {
+    String::from_utf8(zip_bytes(archive, name)?).map_err(|e| format!("{name}: {e}"))
+}
 
 /// The manifest's format; [`assemble`] refuses another.
 pub const FORMAT: i64 = 1;
@@ -34,11 +58,11 @@ fn skipped(relative: &str) -> bool {
 }
 
 fn sha256_hex(data: &[u8]) -> String {
-    crate::hex(&Sha256::digest(data))
+    hex(&Sha256::digest(data))
 }
 
 fn sha1_hex(data: &[u8]) -> String {
-    crate::hex(&Sha1::digest(data))
+    hex(&Sha1::digest(data))
 }
 
 fn relative_to(root: &Path, path: &Path) -> Result<String, String> {
@@ -139,7 +163,7 @@ pub fn pack_facts(
     drop(jar_bytes);
     // Every client-jar member by its SHA-256 (the first name wins; a file at the same path is
     // matched to its own member below).
-    let mut jar = crate::open_zip(client_jar)?;
+    let mut jar = open_zip(client_jar)?;
     let mut members: HashMap<String, String> = HashMap::new();
     let mut member_names: HashSet<String> = HashSet::new();
     for i in 0..jar.len() {
@@ -232,8 +256,8 @@ pub fn assemble(
     out: &Path,
     progress: &dyn Fn(usize, usize),
 ) -> Result<usize, String> {
-    let mut pack = crate::open_zip(sources.facts)?;
-    let manifest = crate::zip_text(&mut pack, MANIFEST)?;
+    let mut pack = open_zip(sources.facts)?;
+    let manifest = zip_text(&mut pack, MANIFEST)?;
     let manifest = pyjson::loads(&manifest).map_err(|e| format!("{MANIFEST}: {e}"))?;
     if manifest.get("format").and_then(Value::as_i64) != Some(FORMAT) {
         return Err(format!(
@@ -277,7 +301,7 @@ pub fn assemble(
     if partial.exists() {
         fs::remove_dir_all(&partial).map_err(|e| format!("{}: {e}", partial.display()))?;
     }
-    let mut jar = crate::open_zip(sources.client_jar)?;
+    let mut jar = open_zip(sources.client_jar)?;
     let total = files.len();
     let mut stamp = None;
     for (done, entry) in files.iter().enumerate() {
@@ -292,13 +316,13 @@ pub fn assemble(
             return Err(format!("{MANIFEST}: refused path {relative}"));
         }
         let data = match get("from")? {
-            "jar" => crate::zip_bytes(&mut jar, get("member")?)?,
+            "jar" => zip_bytes(&mut jar, get("member")?)?,
             "asset" => {
                 let hash = get("hash")?;
                 let path = object_path(sources.assets, hash);
                 fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?
             }
-            "facts" => crate::zip_bytes(&mut pack, &format!("{FACTS_DIR}{relative}"))?,
+            "facts" => zip_bytes(&mut pack, &format!("{FACTS_DIR}{relative}"))?,
             other => return Err(format!("{MANIFEST}: unknown source {other}")),
         };
         if sha256_hex(&data) != get("sha256")? {
@@ -336,7 +360,7 @@ pub fn assemble(
     Ok(total)
 }
 
-/// `horizon-prepare pack-facts|assemble ...`: `None` when `args` is neither.
+/// `horizon-facts pack-facts|assemble ...`: `None` when `args` is neither.
 pub fn cli(args: &[String]) -> Option<Result<(), String>> {
     let command = args.first()?.as_str();
     if command != "pack-facts" && command != "assemble" {

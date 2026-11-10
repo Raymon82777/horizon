@@ -93,17 +93,6 @@ fn default_root() -> Option<PathBuf> {
 }
 
 fn main() -> ExitCode {
-    // Resources without Java on the player's machine (facts.rs): its own small command line.
-    let plain: Vec<String> = std::env::args().skip(1).collect();
-    if let Some(result) = horizon_prepare::facts::cli(&plain) {
-        return match result {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("error: {e}");
-                ExitCode::FAILURE
-            }
-        };
-    }
     let mut options = horizon_prepare::Options {
         root: PathBuf::new(),
         import: false,
