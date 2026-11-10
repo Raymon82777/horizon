@@ -1,56 +1,114 @@
-# Horizon on iOS: feasibility spike (interim)
+# Horizon on iOS: feasibility spike
 
-Date: 2026-11-10. Horizon checkout: `1453e0e61` (main, shallow clone of horizon-rust/horizon). Toolchain: Rust 1.99.1 stable (Homebrew rustup) with `aarch64-apple-ios`, Xcode 27.2.
+Date: 2026-11-10. Horizon `1453e0e61` (main, horizon-rust/horizon) plus local branch `ios-spike` (commit `357c8b40c` and this report, **not pushed**). Rust 1.99.1, Xcode 27.2. Device: iPhone 17 Pro (A19 Pro, 6 cores, 2622×1206 @ 3×, 120 Hz), iOS 27.0.1.
 
-**Status: interim.** Steps 1 and the static half of step 2 are done. No compile has been run yet: the `cargo check --target aarch64-apple-ios` call was refused by Claude Code's auto-mode permission check, because building this repo runs third-party build scripts (ring, mimalloc, libsqlite3-sys, opus, objc2 and so on). Everything below about build blockers comes from reading `cargo tree --target aarch64-apple-ios`, the manifests and the crate sources, not from compiler output. Steps 3–4 (device run, FPS, memory, thermals) are not started.
+## Result in one paragraph
 
-## 1. Existing upstream work
+**Yes: Horizon builds for `aarch64-apple-ios`, runs on the iPhone, and renders vanilla 26.3 worlds through Metal with no JIT.** It took about 15 small `cfg` and platform fixes (no gameplay code touched) plus a signed `.app` wrapper. Horizon's own `--benchmark standard` (the same seed-1234 village/forest/ocean/mountain flight as the desktop figures in the README) **holds a locked 60 FPS at render distance 8**. At 12 and 16 it averages 59–60 FPS with 1% lows of 35–53, limited by the GPU at native resolution with HDR10 output. The memory footprint at RD 16 is about 1.4 GiB, peaking at 1.6 GiB. There are no touch controls yet: the run needs no input because the benchmark flies the camera itself.
 
-- ROADMAP lists "Android, iOS and the browser" as a **Later** long-term goal. Maintainer line on every mobile issue: "the desktop game comes first", and any port must keep the Microsoft sign-in and ownership gate.
-- **iOS:** only [horizon-rust/horizon#1813](https://github.com/horizon-rust/horizon/issues/1813) (merged): `horizon-dualsense` gates `hidapi` and `cpal` off on iOS. Nobody ran an iOS build, by the PR's own account. The manifest comments still mention a `horizon-gamecontroller` crate that already compiled empty on iOS, but that crate is no longer in the tree. [#7188](https://github.com/horizon-rust/horizon/issues/7188) asks for keyboard and mouse on iOS. It was closed in a cleanup, then someone asked for it to be reopened.
-- **Android is far ahead, and iOS can reuse most of it.** Starling (Vasysik/horizon-android, MIT) and d3xc0's branch run on phones. Upstream main has already merged the Android touch stack in small PRs (#12299 touch layout model, #12880 touch aim, #13553 touch state machine, #13659 input runtime, #13679 touch input). Touch drawing (#13681) is in review, and a layout editor and custom buttons are stacked drafts. The code is in `crates/horizon-client-render/src/touch/`. `horizon-threads` has Android gates for worker priority and process memory (#1751).
-- [#1750](https://github.com/horizon-rust/horizon/issues/1750) (open): "prepare without Java" (publish the computed tables, then assemble from the player's own jar and assets). An iOS port would need this, because `horizon-prepare` runs Mojang's code on JDK 25. The maintainer has not yet settled the legal question.
+## 1. Upstream state (what already existed)
 
-## 2. What blocks `aarch64-apple-ios` (static analysis)
+- ROADMAP: "Android, iOS and the browser" is a **Later** long-term goal. Maintainer line: "desktop game comes first", and any port keeps the Microsoft sign-in and ownership gate.
+- iOS: only [horizon-rust/horizon#1813](https://github.com/horizon-rust/horizon/issues/1813) (merged): `horizon-dualsense` compiles on iOS. No one had built or run the client on iOS. [#7188](https://github.com/horizon-rust/horizon/issues/7188) asks for keyboard and mouse on iOS.
+- Android is far ahead, and iOS can reuse most of it. The Android touch stack is landing on main in small PRs (#12299 layout model, #12880 aim, #13553 touch state machine, #13659 input runtime, #13679 touch input; #13681 touch drawing in review; layout editor and custom buttons stacked as drafts) in `crates/horizon-client-render/src/touch/`. Forks: Starling (Vasysik/horizon-android) and d3xc0's android-latest.
+- [#1750](https://github.com/horizon-rust/horizon/issues/1750) (open): "prepare without Java". `horizon-prepare` runs Mojang's code on JDK 25, which a phone can't do. The maintainer still has to settle the legal question.
 
-The dependency tree resolves for the iOS target: 670 crates, every source fetched. Blockers and likely problems:
+## 2. What blocked the iOS build, and the fixes (all on `ios-spike`)
 
-| Item | Where | Problem on iOS | Fix |
+| # | Blocker (symptom) | Fix in the spike | Upstreamable as is? |
 | --- | --- | --- | --- |
-| `arboard` 3.7 (clipboard) | `horizon-client-input` (unconditional, with `wayland-data-control`) | Has no iOS backend. `cfg(unix, not macos/android)` falls through to its **Linux X11/Wayland** module, so at best you get a useless X11 client and at worst a compile failure. | Gate it with `cfg(not(target_os = "ios"))` and add a `UIPasteboard` clipboard through `objc2-ui-kit`. Small. |
-| `wgpu` `gles` feature | `horizon-client`, `horizon-client-lib`: `cfg(not(target_os = "macos"))` | iOS matches "not macOS", so it asks for the GL backend. wgpu has no GLES on Apple without ANGLE. It is probably ignored, but it may pull in EGL or fail. | Change the gate to `cfg(not(target_vendor = "apple"))`. One line ×2. |
-| `wgpu` `vulkan` feature | same | Unused on iOS. Metal is the path, through vendored `third_party/wgpu-hal` and `objc2-metal`, both present. | None needed. |
-| Narrator (TTS) | `horizon-narrator` | Only Windows, Linux (speech-dispatcher through libloading) and macOS (`NSSpeechSynthesizer`, AppKit) backends. iOS gets none, so it should compile as a no-op. | Optional: `AVSpeechSynthesizer`. |
-| macOS-only code paths | 10 files in `horizon-client/src` gate on `target_os = "macos"` (window handler, pointer capture, clipboard, split windows, entry, startup menu…) | iOS gets the "other" branch, which usually means Linux or Windows assumptions. | Check each one once a compile runs. Medium. |
-| `std::process::Command` | telemetry, mod API, world management (open folder), native/dedicated server, pack folder | iOS can't spawn processes (no fork or exec in the sandbox). The dedicated-server and "open folder" paths would fail at runtime. The integrated server runs in-process. | Stub these on iOS, or use `UIApplication.open` for links. Small to medium. |
-| winit event loop | `game/resource_loader.rs:301`, `loading_screen.rs:32`, `no_resources.rs:35`: `EventLoop::new()?.run_app(..)`, then code that runs **after** the loop returns (saves settings, writes the report, leaves fullscreen) | On iOS, `run_app` calls `UIApplicationMain` and **never returns**, and a process can create only one event loop. Today's main path uses a single loop (Loading → Ready), so it can start, but the code after the loop never runs. | Move saving to the suspend and terminate events (`suspended`, `exiting`, `memory_warning`). Medium. |
-| Paths | `HOME`, `.minecraft`, `.local/` resources, `--minecraft-dir` / `HORIZON_MINECRAFT_DIR` | The app sandbox has no `~/.minecraft`. | Point `HORIZON_MINECRAFT_DIR` and the resources directory at the app's Documents folder, and enable Files-app sharing (`UIFileSharingEnabled`). Small. |
-| Controllers | `gilrs` 0.11 → `gilrs-core` 0.6.8 | No iOS backend. It falls back to the dummy platform, so it compiles but sees no pads. | Feature off for the first build, or a `GCController` backend later. |
-| Audio | `cpal` 0.16 (feature `audio`) | Has an iOS CoreAudio backend. Needs an `AVAudioSession` category. | Probably works. Turn it off for the first build to cut risk. |
-| `horizon-dualsense` | already iOS-gated (#1813) | none | — |
-| Mods runtime (wasm) | `horizon-mods` built without the `mods` feature | A Wasm JIT (wasmtime/cranelift) would need W^X memory iOS doesn't give. It isn't compiled by default. | Keep it off, or use a Wasm interpreter later. |
-| C build scripts | `ring`, `libmimalloc-sys`, `libsqlite3-sys`, `rusty-opus` | All of these cross-compile to iOS normally with Xcode's clang. | Unverified until a build runs. |
-| `horizon-prepare` | separate crate | Needs JDK 25 and Mojang's server jar. It won't run on the phone. | Prepare on the Mac and copy `.local/` to the device. For players: #1750. |
+| 1 | `horizon-hdr`: `wgpu::hal::api::Vulkan` missing (gated `not(macos)`, so iOS took the Vulkan path) | Gates changed to `not(target_vendor = "apple")`; wgpu `vulkan` feature only off Apple | Yes |
+| 2 | `horizon-client-render/gfx/surface_setup.rs`: calls `open_vulkan_device` | Same gate | Yes |
+| 3 | `horizon-threads`: `proc_pidinfo` / `proc_taskinfo` not in libc for iOS | iOS path through Mach `task_info(MACH_TASK_BASIC_INFO)` | Yes |
+| 4 | `arboard` (clipboard) has no iOS backend and falls through to its Linux/Wayland code (`wayland-backend` fails) | `arboard` only `cfg(not(ios))`; an in-game clipboard stub on iOS | Yes, but `UIPasteboard` is better |
+| 5 | `winit::platform::modifier_supplement` missing on iOS (keybinds) | iOS uses `logical_key` | Yes |
+| 6 | Link: `___chkstk_darwin` undefined (rustc defaults to iOS 10.0, cc objects at 27.2) | `IPHONEOS_DEPLOYMENT_TARGET=17.0` (`ios/build.sh`) | Build setting |
+| 7 | **iOS 27 kills apps that don't adopt the UIScene lifecycle** (`_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`, SIGTRAP); winit 0.30's UIKit backend uses the app-delegate lifecycle | **Stopgap:** `vtool` stamps the binary as built with the iOS 26 SDK (`ios/package.sh`) | **No**. Needs UIScene support in winit (or an own UIKit shell). This is the biggest platform risk. |
+| 8 | Renderer tries only Vulkan and GL ("No Vulkan or OpenGL graphics driver found"); `backend_order` special-cases `os == "macos"` | `os == "ios"` uses wgpu's default (Metal); API choices and the error text by `target_vendor = "apple"` | Yes |
+| 9 | Main-thread stack overflow on starting the renderer (iOS main thread 1 MiB; macOS 8 MiB; winit has to run the game there) | `-Wl,-stack_size,0x4000000` on the final link (LC_MAIN 64 MiB) | Build setting |
+| 10 | Silent exit 0: errors stored for after `run_app` are never logged, because `run_app` never returns on iOS | Log the loading error before `exit()` on iOS | Yes, plus save on `suspended` / `exiting` |
+| 11 | Only the top-left corner shows: the window asks for 1156×700 points, larger than the 874×402-point screen | No `with_inner_size` on iOS (the window is the screen) | Yes |
+| 12 | Paths: `~/.local/share/horizon` unwritable, iOS cwd is `/` | `main` changes into `$HOME/Documents`; the app passes `--resources resources --home . --game-dir .` | Partly. iOS defaults should go into `logging::game_home` |
+| — | Narrator: "Unsupported platform ios" | Harmless (no-op) | `AVSpeechSynthesizer` later |
+| — | `gilrs`: dummy backend on iOS | Compiles, sees no pads | `GCController` backend later |
+| — | `cpal` audio | **Works** ("audio output Default Device 48000 Hz") | — |
+| — | `std::process::Command` (dedicated server, open folder, telemetry) | Not hit in this spike | Stub on iOS |
 
-**Rough estimate:** a compile-clean `horizon-client` for `aarch64-apple-ios` is about 1–3 days of `cfg` gating (arboard, the wgpu gate, process spawning, macOS-only branches), with no gameplay changes. `#![forbid(unsafe_code)]` in the client is not an obstacle, because winit already wraps UIKit.
+Default features (`audio`, `controllers`, `horizon-extras`) build. The wasm mods runtime stays off (a Wasm JIT would need W^X, which iOS doesn't allow).
 
-## 3. Planned host-app approach (not yet run)
+## 3. Host app and assets
 
-winit 0.30 supports iOS directly: a Rust `bin` built for `aarch64-apple-ios` goes inside a `.app` (Info.plist, `UILaunchScreen`, `UIFileSharingEnabled`, the memory entitlements from Amethyst) and is signed with team BFH3MLCK9L. winit's `run_app` starts `UIApplicationMain`, and wgpu's Metal surface comes from winit's `UIView`/`CAMetalLayer`. An xcodegen project is only needed for convenience. Assets: run `horizon-prepare` on the Mac against Ray's desktop 26.3 install, then copy `.local/` and the client jar and asset index into the app's Documents folder.
+- `ios/build.sh`: `cargo rustc --target aarch64-apple-ios -p horizon-client --profile release` with the deployment target and stack size. A full release build takes about 25 min from clean, about 4 min to relink. The binary is 84 MB.
+- `ios/package.sh`: wraps the binary as `Horizon.app` (`ios/Info.plist`: landscape, `UIFileSharingEnabled`, `CADisableMinimumFrameDurationOnPhone`), embeds the profile, signs with team BFH3MLCK9L and installs through `devicectl`. Bundle ID `com.raymcdonald.horizon`. Its App ID has **Increased Memory Limit + Extended Virtual Addressing**; the profile came from the xcodegen stub in `ios/stub`. No Xcode project is needed for the game itself: winit's `run_app` starts `UIApplicationMain`, and wgpu gets the `CAMetalLayer` from winit's `UIView`.
+- Assets: there is no desktop install on this Mac, so the 26.3 client jar, version JSON, asset indexes and libraries came from **Ray's own Amethyst install on the iPhone** (`devicectl` copy from its data container). The only additions were the 26.3 server jar (from the URL in Ray's own version JSON, SHA-1 checked) and the stock LWJGL 3.4.3 jars that Amethyst replaces with its iOS build (SHA-1 checked). `horizon-prepare` ran on the Mac with Homebrew `openjdk@25` in 23 s and produced 221 MB of resources, copied to the app's Documents in about 70 s. No sounds were prepared, so the game is silent.
+- All Mojang files and prepared resources sit in the git-excluded `.mc/` folder and are not committed.
 
-## 4. Measurements
+## 4. Measurements (iPhone 17 Pro, release build, `--benchmark standard`)
 
-None yet.
+Native 2622×1206, HDR10 (PQ) output, Fifo present (capped at 60, see below), 6 CPU threads, Metal on Apple A19 Pro GPU, multi-draw and occlusion culling on.
 
-## 5. Early read on the question
+| Render distance | Scene | Avg FPS | 1% low | p99 ms | CPU p50 ms | GPU p50 ms | Chunks loaded in |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 8 | village | 59.99 | 59.3 | 16.8 | 3.3 | 6.3 | 15.4 s |
+| 8 | forest | 59.99 | 59.4 | 16.8 | 2.9 | 6.6 | 13.9 s |
+| 8 | ocean | 59.99 | 59.3 | 16.8 | 2.9 | 9.4 | 17.8 s |
+| 8 | mountain | 59.99 | 59.3 | 16.9 | 2.5 | 7.7 | 23.6 s |
+| 12 | village | 59.99 | 59.2 | 16.9 | 2.5 | 10.1 | 21.2 s |
+| 12 | forest | 59.82 | 45.0 | 18.8 | 1.5 | 14.5 | 28.1 s |
+| 12 | ocean | 59.89 | 46.6 | 19.6 | 1.7 | 13.8 | 30.3 s |
+| 12 | mountain | 59.99 | 59.3 | 16.8 | 1.1 | 13.2 | 32.0 s |
+| 16 | village | 59.99 | 49.7 | 19.5 | 1.8 | 13.5 | 27.5 s |
+| 16 | forest | 58.95 | 34.7 | 23.4 | 1.5 | 14.2 | 44.5 s |
+| 16 | ocean | 59.82 | 44.3 | 19.2 | 1.7 | 13.9 | 25.0 s |
+| 16 | mountain | 59.98 | 53.3 | 18.1 | 2.3 | 14.3 | 34.3 s |
 
-- **No JIT is a real structural win.** Horizon is AOT native code, so it needs neither JIT26 nor the debugger-attach dance. It is also sideloadable without a debugger, which Java Minecraft on iOS is not.
-- On desktop it already uses less memory than vanilla (1.1–1.7 GB working set against 1.9–2.9 GB) and draws more frames, and the Metal path skips the MoltenVK translation layer.
-- The hard parts for a *playable* port are not rendering: touch UI (mostly done upstream for Android and portable), Microsoft sign-in in an app (ASWebAuthenticationSession), and getting assets without Java (#1750).
-- **Upstream versus fork:** the upstream culture accepts small, `cfg`-gated, desktop-neutral PRs (see #1813, #1751 and the Android input series), and the touch stack is landing on main. Small upstream PRs for compile gates and the iOS platform layer are the better route. Keep the app wrapper, signing and packaging in a separate repo (or a fork branch) until upstream wants official iOS packaging. Confirm after the device run.
+- **Startup:** title screen 5.8–6.9 s, in the world 24 s (RD 8) to 44 s (RD 16) from a fresh world.
+- **Memory** (Instruments Activity Monitor, RD 16): physical footprint **median 1.39 GiB, peak 1.57 GiB**, with 30–32 threads. This is well inside the increased-memory-limit budget, and close to Horizon's desktop working set (1.1–1.7 GB).
+- **CPU:** 25–160% of 600% during the flight. The CPU is nowhere near the limit (p50 1–3 ms a frame).
+- **Thermals:** the device's thermal state was **"Serious" for the whole 3.5-minute RD 16 run under Instruments**. That came after about 25 minutes of back-to-back benchmark runs, with the phone tethered by USB. No run showed FPS falling over time, but a Serious state means iOS is already limiting clocks. A cold-device run would differ.
+- **Not measured:** Java Minecraft through Amethyst at the same settings (no matched run here). 120 Hz: the cap is 60. wgpu's Fifo plus a CAMetalLayer without a `preferredFrameRateRange` / CADisplayLink at 120 likely explains it, so it's worth a look before any comparison.
 
-## Next steps (blocked on permission)
+**Reading:** at RD 8 the GPU has about 2.5× headroom over 60 FPS and the CPU about 5×. From RD 12 up, the frame is GPU-bound (13–14.5 ms of a 16.7 ms budget) at the full 3× resolution with HDR output. Horizon already has `resolutionScale`, upscaling and `batteryMode` settings, so 0.67× resolution and SDR are the obvious first levers for higher render distances and for heat.
 
-1. Allow `cargo check` / `cargo build` for this repo (it runs crate build scripts). Then fix the compile blockers locally (no push).
-2. Wrap `horizon-client` in a signed `.app`, install on the iPhone 17 Pro, and render a world from prepared 26.3 resources.
-3. Measure FPS, memory and thermals at render distance 6, 12 and 16.
+## 5. Effort estimate to a playable port
+
+| Work | Estimate | Notes |
+| --- | --- | --- |
+| Upstream the compile and run fixes (rows 1–5, 8, 10–12) | 2–4 days | Small `cfg` PRs, desktop-neutral, the shape upstream accepts |
+| **UIScene lifecycle** (row 7) | 1–2 weeks | Patch winit's iOS backend (UIScene delegate, scene-attached UIWindow), or a small Swift/ObjC UIKit shell that hosts the `CAMetalLayer` and feeds events into the game. Blocks any non-hack build on iOS 27. |
+| Lifecycle and persistence | 3–5 days | Save on `suspended` / `exiting` / memory warnings; no code after `run_app`; pause rendering in the background (iOS kills GPU work in the background) |
+| Touch controls and UI | 2–4 weeks | Reuse the Android touch stack now on main (layout, aim, state machine, input runtime). iOS work: winit `Touch` events into it, safe areas and notch, GUI scale defaults, on-screen keyboard for chat and signs. Bluetooth keyboard and mouse (#7188) need pointer lock through `UIPointerInteraction` / `GCMouse`. |
+| Controllers | 3–5 days | `GCController` backend for gilrs or Horizon's input layer |
+| Microsoft sign-in | 1 week | `ASWebAuthenticationSession` for the OAuth device or code flow, Keychain for tokens, then the existing session and online-mode code. Must keep upstream's owner gate. |
+| Assets without a desktop | 1–3 weeks, plus legal | After sign-in: download 26.3 client and assets from Mojang for an owning account (the launcher already does this on desktop). Preparation needs #1750 (published tables plus a local `assemble`) or another route, because the phone has no JDK. Copy-in through the Files app works as a dev path today. |
+| Packaging and polish | 1 week | Xcode project or `xcodegen` for the app shell, icons, launch screen, 120 Hz frame pacing, resolution and HDR defaults for phones, thermal-aware presets |
+
+**Total: about 2–3 months of one person to a playable port** that signs in, downloads and prepares, and has touch controls. That range assumes the Android touch work keeps landing upstream, and that #1750 or an equivalent gets settled; without it, "assets" is the long pole.
+
+## 6. Native Horizon versus Java Minecraft on iPhone
+
+- **No JIT, no debugger.** This is AOT native code: no JIT26, no debugger-attached launch, and no W^X tricks. It can be sideloaded or distributed like a normal app. That alone removes Amethyst's largest fragility.
+- **Metal directly** through wgpu, with no MoltenVK or GL translation layer.
+- **Resources:** a working set of about 1.4 GiB at RD 16, and a 60 FPS cap reached with CPU p50 under 3.5 ms.
+- **What a native port doesn't get:** Java mods (Fabric and friends). Horizon has its own mod formats, and its Wasm mods need a runtime without a JIT on iOS.
+
+## 7. Recommendation: upstream first, with a thin fork for the app shell
+
+- **Upstream** the platform `cfg` fixes as small, separate PRs. They are desktop-neutral and match how #1813, #1751 and the Android input series were accepted. They also keep iOS compiling as main moves fast (the merge numbers are around #14000). Note that upstream is heavily agent-driven and gates contributions; PRs need `tools/pr_ready.py` output.
+- **Keep in a fork or a separate repo for now:** the app shell (Info.plist, signing, packaging), the `vtool` SDK stamp, and anything iOS-only that upstream hasn't asked for. Upstream explicitly isn't taking official mobile packaging yet ("desktop game comes first"), and d3xc0's Android client went the same way: fork first, then small PRs.
+- **UIScene support** belongs in winit itself (an upstream winit PR), which benefits everyone and keeps Horizon free of UIKit code.
+- Before contributing anything upstream, confirm with Ray. Nothing has been pushed, and no issues or PRs have been opened.
+
+## How to reproduce
+
+```sh
+cd ~/Coding\ Projects/horizon-ios            # branch ios-spike
+ios/build.sh release                          # aarch64-apple-ios horizon-client
+ios/package.sh release --install              # Horizon.app on the iPhone
+# resources: horizon-prepare on the Mac (JDK 25), then
+xcrun devicectl device copy to --device <UDID> --domain-type appDataContainer \
+  --domain-identifier com.raymcdonald.horizon --source .mc/resources --destination Documents/resources
+ios/bench.sh 8                                # --benchmark standard at RD 8; report in .mc/dev-out/bench/
+```
+
+Raw data: `.mc/dev-out/bench/rd{8,12,16}.json` (Horizon benchmark reports), `rd16.trace` (Instruments: Activity Monitor and Thermal State), console logs beside them.
