@@ -105,14 +105,15 @@ impl Loading {
         );
         // `--offscreen` renders into a texture: its window would only show white.
         let window_step = startup::step("window.create");
+        // iOS: the window is the screen; a requested size larger than it (in points) gives a
+        // surface whose top-left corner alone shows.
+        let attributes = if cfg!(target_os = "ios") {
+            attributes
+        } else {
+            attributes.with_inner_size(winit::dpi::LogicalSize::new(size[0], size[1]))
+        };
         let window = match event_loop.create_window(
-            // iOS: the window is the screen; a requested size larger than it (in points) gives
-            // a surface whose top-left corner alone shows.
-            if cfg!(target_os = "ios") {
-                attributes
-            } else {
-                attributes.with_inner_size(winit::dpi::LogicalSize::new(size[0], size[1]))
-            }
+            attributes
                 .with_fullscreen(fullscreen.then_some(winit::window::Fullscreen::Borderless(None)))
                 .with_visible(!self.options.as_ref().is_some_and(|o| o.offscreen)),
         ) {

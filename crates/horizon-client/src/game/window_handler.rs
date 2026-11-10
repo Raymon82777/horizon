@@ -299,14 +299,15 @@ impl ApplicationHandler for Game<'_> {
         self.unclaimed_window = agent_started && !self.options.offscreen;
         // `--offscreen` renders into a texture: its window would only show white.
         let window_step = startup::step("window.create");
+        // iOS: the window is the screen; a requested size larger than it (in points) gives a
+        // surface whose top-left corner alone shows.
+        let attributes = if cfg!(target_os = "ios") {
+            attributes
+        } else {
+            attributes.with_inner_size(winit::dpi::LogicalSize::new(size[0], size[1]))
+        };
         let window = match event_loop.create_window(
-            // iOS: the window is the screen; a requested size larger than it (in points) gives
-            // a surface whose top-left corner alone shows.
-            if cfg!(target_os = "ios") {
-                attributes
-            } else {
-                attributes.with_inner_size(winit::dpi::LogicalSize::new(size[0], size[1]))
-            }
+            attributes
                 .with_fullscreen(fullscreen.then_some(winit::window::Fullscreen::Borderless(None)))
                 .with_visible(!self.options.offscreen)
                 .with_active(!agent_started),
