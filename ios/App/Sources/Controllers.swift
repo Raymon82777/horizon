@@ -2,7 +2,8 @@ import GameController
 
 /// Game controllers (Xbox, PlayStation, Switch Pro, MFi…) for the game: the GameController
 /// framework's current controller, its whole state sent to the game on every change
-/// (horizon_ios_pad_*; Rust: horizon_client::gamepad::platform). gilrs has no iOS backend, so
+/// (horizon_ios_pad_*, looked up in the loaded game framework by GameBridge; Rust:
+/// horizon_client::gamepad::platform). gilrs has no iOS backend, so
 /// this is the game's only way to a pad here; from there it plays as on desktop, with the same
 /// bindings, menus and glyphs.
 enum Controllers {
@@ -34,7 +35,8 @@ enum Controllers {
         guard let controller, controller !== current, let pad = controller.extendedGamepad else { return }
         detach()
         current = controller
-        horizon_ios_pad_connected(family(of: controller), controller.vendorName ?? controller.productCategory)
+        let name = controller.vendorName ?? controller.productCategory
+        name.withCString { GameBridge.pad?.connected(family(of: controller), $0) }
         pad.valueChangedHandler = { pad, _ in send(pad) }
         send(pad)
     }
@@ -43,7 +45,7 @@ enum Controllers {
         guard let old = current else { return }
         old.extendedGamepad?.valueChangedHandler = nil
         current = nil
-        horizon_ios_pad_disconnected()
+        GameBridge.pad?.disconnected()
     }
 
     /// The glyph family: 0 Xbox, 1 PlayStation, 2 Nintendo, 3 unknown.
@@ -72,9 +74,9 @@ enum Controllers {
         for (i, button) in buttons.enumerated() where button?.isPressed == true {
             bits |= 1 << UInt32(i)
         }
-        horizon_ios_pad_state(bits,
-                              pad.leftThumbstick.xAxis.value, pad.leftThumbstick.yAxis.value,
-                              pad.rightThumbstick.xAxis.value, pad.rightThumbstick.yAxis.value,
-                              pad.leftTrigger.value, pad.rightTrigger.value)
+        GameBridge.pad?.state(bits,
+                               pad.leftThumbstick.xAxis.value, pad.leftThumbstick.yAxis.value,
+                               pad.rightThumbstick.xAxis.value, pad.rightThumbstick.yAxis.value,
+                               pad.leftTrigger.value, pad.rightTrigger.value)
     }
 }

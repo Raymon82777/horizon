@@ -1,3 +1,4 @@
+import Darwin
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -6,6 +7,7 @@ struct InstancesView: View {
     @EnvironmentObject private var instances: Instances
     @AppStorage("tab") private var tab = Tab.play
     @State private var editing: Instance?
+    @State private var opened: Instance?
     @State private var creating = false
     @State private var deleting: Instance?
     @State private var importing = false
@@ -16,9 +18,16 @@ struct InstancesView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(instances.list) { instance in
-                    row(instance)
+                Section {
+                    ForEach(instances.list) { instance in
+                        row(instance)
+                    }
+                } footer: {
+                    Text("Tap an instance to select it: Play plays the selected one. › opens its worlds, mods, packs and logs.")
                 }
+            }
+            .navigationDestination(item: $opened) { instance in
+                InstanceDetailView(instanceID: instance.id)
             }
             .navigationTitle("Instances")
             .toolbar {
@@ -75,35 +84,46 @@ struct InstancesView: View {
         }
     }
 
+    /// One instance: tap to select it (the check and the tint show which), ▶ to select and play,
+    /// › for its page (worlds, mods, packs, logs), ⋯ for the rest.
     private func row(_ instance: Instance) -> some View {
         let selected = instance.id == instances.selectedID
-        return NavigationLink {
-            InstanceDetailView(instanceID: instance.id)
-        } label: {
-            rowContent(instance, selected: selected)
-        }
-    }
-
-    private func rowContent(_ instance: Instance, selected: Bool) -> some View {
-        HStack(spacing: 14) {
-            InstanceIcon(instance: instance, size: 52)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(instance.name).font(.headline)
-                    if selected {
-                        Text("Selected").font(.caption2.bold()).padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(.green.opacity(0.25), in: Capsule())
+        return HStack(spacing: 10) {
+            Button {
+                withAnimation(.snappy) { instances.select(instance) }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(selected ? Color.green : Color.secondary)
+                        .accessibilityLabel(selected ? "Selected" : "Not selected")
+                    InstanceIcon(instance: instance, size: 46)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(instance.name)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Text(details(instance))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
+                    Spacer(minLength: 0)
                 }
-                Text(details(instance)).font(.caption).foregroundStyle(.secondary)
+                .contentShape(Rectangle())
             }
-            Spacer()
-            Button("Play") {
+            .buttonStyle(.plain)
+            Button {
                 instances.select(instance)
                 tab = .play
+            } label: {
+                Image(systemName: "play.fill")
             }
             .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .accessibilityLabel("Play \(instance.name)")
             Menu {
+                Button("Open", systemImage: "folder") { opened = instance }
                 Button("Edit", systemImage: "pencil") { editing = instance }
                 Button("Duplicate", systemImage: "plus.square.on.square") {
                     do { try instances.duplicate(instance) } catch { self.error = error.localizedDescription }
@@ -118,8 +138,20 @@ struct InstancesView: View {
             } label: {
                 Image(systemName: "ellipsis.circle").font(.title3)
             }
+            Button {
+                opened = instance
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(instance.name)")
         }
         .padding(.vertical, 4)
+        .listRowBackground(selected ? instance.tint.opacity(0.16) : Color(uiColor: .secondarySystemGroupedBackground))
     }
 
     private func details(_ instance: Instance) -> String {
@@ -176,6 +208,7 @@ struct InstanceEditor: View {
     @State private var color = 1
     @State private var renderDistance = 8.0
     @State private var copySettings = true
+    @State private var textureBudget = 0
 
     var body: some View {
         NavigationStack {
@@ -205,6 +238,20 @@ struct InstanceEditor: View {
                         }
                     }
                 }
+                if case .edit = mode {
+                    Section {
+                        Picker("Block texture memory", selection: $textureBudget) {
+                            ForEach(GraphicsFile.textureBudgets, id: \.self) { mib in
+                                Text(mib == 0 ? "Auto (256 MB)" : mib >= 1024 ? "\(mib / 1024).\(mib % 1024 * 10 / 1024) GB" : "\(mib) MB")
+                                    .tag(mib)
+                            }
+                        }
+                    } header: {
+                        Text("Memory")
+                    } footer: {
+                        Text("How much memory this instance's block textures may use: more keeps high-resolution resource packs sharp, less leaves more for the world. The other big use is render distance, in the game's Options. iOS lets Horizon use up to \(Self.limit) on this phone (Settings → Diagnostics). Takes effect the next time you play.")
+                    }
+                }
                 if case .create = mode {
                     Section {
                         Toggle("Copy settings from \(instances.current.name)", isOn: $copySettings)
@@ -221,6 +268,9 @@ struct InstanceEditor: View {
                     Button(isCreate ? "Create" : "Save") {
                         let trimmed = name.trimmingCharacters(in: .whitespaces)
                         done(trimmed.isEmpty ? "Instance" : trimmed, icon, color, Int(renderDistance), copySettings)
+                        if case .edit(let instance) = mode {
+                            GraphicsFile.set(GraphicsFile.textureBudgetKey, String(textureBudget), in: instance.url)
+                        }
                         dismiss()
                     }
                 }
@@ -232,8 +282,16 @@ struct InstanceEditor: View {
                 icon = instance.icon
                 color = instance.color
                 renderDistance = Double(instance.renderDistance)
+                let saved = Int(GraphicsFile.value(GraphicsFile.textureBudgetKey, in: instance.url) ?? "") ?? 0
+                textureBudget = GraphicsFile.textureBudgets.contains(saved) ? saved : 0
             }
         }
+    }
+
+    /// iOS's memory limit for this app, as Diagnostics measures it.
+    static var limit: String {
+        let bytes = DiagnosticsView.footprint() + UInt64(os_proc_available_memory())
+        return String(format: "%.1f GB", Double(bytes) / 1_073_741_824)
     }
 
     private var isCreate: Bool {

@@ -47,6 +47,7 @@ members = [
     "crates/horizon-shaders",
     "ios/rust/horizon-ios",
     "ios/rust/horizon-facts",
+    "ios/rust/horizon-ios-tools",
     "crates/horizon-optifine",
     "crates/horizon-polytone",
     "crates/horizon-shader-api",

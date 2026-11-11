@@ -20,6 +20,20 @@ targets:
           "$SRCROOT/build-rust.sh" "$CONFIGURATION"
         basedOnDependencyAnalysis: false
     postCompileScripts:
+      - name: Embed the game frameworks
+        script: |
+          # HorizonGame.framework (no native mods) and one per instance's native mods
+          # (ios/native-build.sh), each signed like the app.
+          dest="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
+          mkdir -p "$dest"
+          rm -rf "$dest"/HorizonGame*.framework
+          for framework in "$SRCROOT/../build/frameworks"/HorizonGame*.framework; do
+            [ -d "$framework" ] || continue
+            cp -R "$framework" "$dest/"
+            codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" --timestamp=none \
+              "$dest/$(basename "$framework")"
+          done
+        basedOnDependencyAnalysis: false
       - name: Bundle the facts pack
         script: |
           # The Java-derived tables (horizon-facts pack-facts on a computer). Private: built
@@ -39,7 +53,9 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Horizon-Bridging-Header.h
         LIBRARY_SEARCH_PATHS: $(SRCROOT)/../../target/aarch64-apple-ios/release
         # iOS gives the main thread 1 MiB; the game runs on it (winit) and needs more.
-        OTHER_LDFLAGS: -lhorizon_ios -Wl,-stack_size,0x4000000
+        # The launcher's helpers; the game is a framework loaded at Play (GameBridge.swift).
+        OTHER_LDFLAGS: -lhorizon_ios_tools -Wl,-stack_size,0x4000000
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
         ENABLE_BITCODE: NO
         DEAD_CODE_STRIPPING: YES
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -53,8 +69,8 @@ targets:
         CURRENT_PROJECT_VERSION: "2"
         INFOPLIST_KEY_UIRequiresFullScreen: YES
         INFOPLIST_KEY_UIStatusBarHidden: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
     dependencies:
       - sdk: Metal.framework

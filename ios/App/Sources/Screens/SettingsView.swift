@@ -19,6 +19,15 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    NavigationLink {
+                        DiagnosticsView()
+                    } label: {
+                        Label("Memory and entitlements", systemImage: "memorychip")
+                    }
+                } header: {
+                    Text("Diagnostics")
+                }
+                Section {
                     Button("Edit touch layout", systemImage: "hand.tap") { editingTouch = true }
                 } header: {
                     Text("Controls")

@@ -5,11 +5,16 @@ Everything iOS lives in this folder, so pulling the newest upstream Horizon is a
 ```
 ios/
   App/                 SwiftUI launcher (xcodegen project.yml); owns UIApplicationMain + UIScene
-  rust/horizon-ios/    the game as a static library: horizon_ios_run, horizon_ios_assemble
+  rust/horizon-ios/    the game as a framework the app loads at Play: horizon_ios_run, controllers
+  rust/horizon-ios-tools/  the launcher's helpers, linked into the app: resources, unzip, mod checks
   rust/horizon-facts/  resources without Java: pack-facts (computer) / assemble (device)
   rust/winit/          winit 0.30.13 + embedded iOS mode (patched in via the root Cargo.toml)
   sync-upstream.sh     fetch + merge upstream/main + check the iOS build
-  install.sh           build the app and install it on the iPhone
+  install.sh           build the app and install it on the iPhone (cable or Wi-Fi; --native builds
+                       each instance's native mods)
+  remote-install.sh    install from anywhere over Tailscale (an Install page on the tailnet)
+  native-build.py      each instance's native mods, applied with horizon-mixins and built for iOS
+  package-game.sh      wraps a built game as HorizonGame*.framework
   ROADMAP.md           milestones toward a self-contained launcher
   SIGN_IN_SETUP.md     the Azure app and Mojang approval Microsoft sign-in needs
   IOS_SPIKE.md         the original feasibility spike and measurements
@@ -49,3 +54,22 @@ The build runs `build-rust.sh` (`cargo build --release -p horizon-ios --target a
 cargo run --release -p horizon-facts -- pack-facts --resources .mc/resources \
   --client-jar .mc/versions/26.3/26.3.jar --assets-dir .mc/assets --out .mc/facts/horizon-facts-26.3.zip
 ```
+
+## Installing without a cable
+
+```sh
+ios/remote-install.sh          # build, then serve an Install page on the tailnet
+ios/remote-install.sh --stop   # stop serving
+```
+
+On the iPhone, with Tailscale on, open `https://<this Mac>.<tailnet>.ts.net/horizon/` in Safari and tap Install. This needs HTTPS Certificates turned on for the tailnet. `devicectl` can't install over Tailscale, because it finds devices by Bonjour.
+
+## Native mods
+
+Native mods are patches to the game's source, so each instance's set is compiled into a game framework of its own on the Mac. On the phone: an instance's page → Native mods → Add. Then on the Mac, with the phone connected:
+
+```sh
+ios/install.sh --native --trust-native-code
+```
+
+Native mods aren't sandboxed, so building them is the player's decision (`--trust-native-code`). A mod that doesn't apply to this fork's source is left out, and the phone shows it under "Left out".

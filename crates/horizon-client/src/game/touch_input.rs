@@ -88,6 +88,18 @@ fn with<T>(f: impl FnOnce(&mut State) -> T) -> T {
     })
 }
 
+/// Where `control` sits on a `size` screen. The layout is made for landscape (sizes are
+/// fractions of the height); in portrait the sizes go by the short side so buttons stay the same
+/// size, and the top row moves below the Dynamic Island.
+fn placed(settings: &layout::Settings, control: Control, size: [f32; 2]) -> layout::Placement {
+    let mut p = settings.placement(control);
+    if size[1] > size[0] {
+        p.size *= size[0] / size[1];
+        p.center[1] = p.center[1].max(0.085);
+    }
+    p
+}
+
 /// What a layout button is bound to, and its label.
 fn binding(control: Control) -> Option<(&'static str, &'static str)> {
     Some(match control {
@@ -218,7 +230,7 @@ impl Game<'_> {
             Control::ALL.into_iter().find(|c| {
                 binding(*c).is_some()
                     && settings.visible(*c)
-                    && layout::contains(settings.placement(*c).rect(aspect), point)
+                    && layout::contains(placed(settings, *c, size).rect(aspect), point)
             })
         })
     }
@@ -458,7 +470,7 @@ impl Game<'_> {
         }
         let size = self.touch_surface()?;
         with(|s| {
-            let radius = s.settings.as_ref()?.placement(Control::Move).size / 2.0 * size[1];
+            let radius = placed(s.settings.as_ref()?, Control::Move, size).size / 2.0 * size[1];
             s.fingers.iter().find_map(|(_, role, at)| match role {
                 Role::Joystick { origin } => {
                     let v = [(at[0] - origin[0]) / radius, (at[1] - origin[1]) / radius];
@@ -537,7 +549,7 @@ impl Game<'_> {
                 if !settings.visible(control) {
                     continue;
                 }
-                let p = settings.placement(control);
+                let p = placed(settings, control, size);
                 let [x, y, bw, bh] = p.rect(aspect);
                 let centre = [(x + bw / 2.0) * w, (y + bh / 2.0) * h];
                 let radius = bh * h / 2.0;
@@ -556,7 +568,7 @@ impl Game<'_> {
                 );
             }
             // The joystick: where the finger landed, else its resting place.
-            let move_p = settings.placement(Control::Move);
+            let move_p = placed(settings, Control::Move, size);
             let radius = move_p.size / 2.0 * h;
             let (base, knob) = s
                 .fingers

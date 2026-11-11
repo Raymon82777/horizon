@@ -2,10 +2,13 @@
 # Builds the iOS app (the Rust game library and the SwiftUI launcher) and installs it on an iPhone
 # or iPad, by cable or Wi-Fi.
 #
-# Usage: ios/install.sh [--launch] [--debug] [--device UDID|NAME]
+# Usage: ios/install.sh [--launch] [--debug] [--device UDID|NAME] [--native [--trust-native-code]]
 #   --launch   open the app on the device once it's installed
 #   --debug    a Debug build (slow game; Release is the default)
 #   --device   which device (default: $HORIZON_IOS_DEVICE, else the first reachable iPhone, else iPad)
+#   --native   build the native mods each instance on the device chose (ios/native-build.py); with
+#              no --trust-native-code it only lists them: native mods aren't sandboxed, so building
+#              them is your decision
 #
 # Needs Xcode, xcodegen, rustup with the aarch64-apple-ios target, and the device paired with this
 # Mac (Xcode → Window → Devices and Simulators; tick "Connect via network" there for Wi-Fi installs).
@@ -15,6 +18,8 @@ app_dir="$here/App"
 export PATH="/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
 
 launch=0
+native=0
+trust=""
 configuration=Release
 device=${HORIZON_IOS_DEVICE:-}
 while [ $# -gt 0 ]; do
@@ -22,7 +27,9 @@ while [ $# -gt 0 ]; do
         --launch) launch=1 ;;
         --debug) configuration=Debug ;;
         --device) device=$2; shift ;;
-        -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+        --native) native=1 ;;
+        --trust-native-code) native=1; trust=--trust-native-code ;;
+        -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -74,13 +81,22 @@ udid=$(printf '%s' "$pick" | cut -f1)
 name=$(printf '%s' "$pick" | cut -f2)
 echo "==> Device: $name ($udid)"
 
+if [ $native -eq 1 ]; then
+    echo "==> Native mods the instances on $name chose"
+    # shellcheck disable=SC2086
+    if ! python3 "$here/native-build.py" --device "$udid" $trust; then
+        echo "Native mods didn't all build; the app is installed with what did." >&2
+    fi
+fi
+
 echo "==> Building ($configuration): the game library, then the app"
 cd "$app_dir"
 xcodegen --quiet
 log="$app_dir/build.log"
 started=$(date +%s)
 if ! xcodebuild -project Horizon.xcodeproj -scheme Horizon -configuration "$configuration" \
-    -destination "id=$udid" -allowProvisioningUpdates -derivedDataPath build build >"$log" 2>&1; then
+    -destination "id=$udid" -allowProvisioningUpdates -derivedDataPath build \
+    CURRENT_PROJECT_VERSION="$(date +%y%m%d.%H%M)" build >"$log" 2>&1; then
     grep -E 'error:|warning: .*(provision|sign)' "$log" | sort -u | head -20 >&2
     echo "Build failed; the whole log is in $log" >&2
     exit 1

@@ -1,0 +1,21 @@
+[package]
+name = "horizon-ios-tools"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The iOS launcher's helpers as a static library: resources, unzip, mod registry checks"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# Resources without Java (horizon-facts): assemble on the device.
+horizon-facts = { path = "../horizon-facts" }
+horizon-mods = { path = "../../../crates/horizon-mods", default-features = false, features = ["index"] }
+serde_json = "1"
+# World and instance import (horizon_ios_unzip).
+zip = { version = "9.1.3", default-features = false, features = ["deflate"] }
+
+[lints]
+workspace = true

@@ -4,7 +4,7 @@ import SwiftUI
 /// whichever instance is selected; Play, Edit and the rest at the top.
 struct InstanceDetailView: View {
     enum Section: String, CaseIterable, Identifiable {
-        case worlds = "Worlds", mods = "Mods", resourcePacks = "Resource packs", shaders = "Shaders", logs = "Logs"
+        case worlds = "Worlds", mods = "Mods", native = "Native mods", resourcePacks = "Resource packs", shaders = "Shaders", logs = "Logs"
         var id: String { rawValue }
     }
 
@@ -30,6 +30,7 @@ struct InstanceDetailView: View {
                     switch section {
                     case .worlds: WorldsView(instanceID: instance.id)
                     case .mods: PacksView(root: instance.url, kind: .mod)
+                    case .native: NativeModsView(instanceID: instance.id)
                     case .resourcePacks: PacksView(root: instance.url, kind: .resourcepack)
                     case .shaders: PacksView(root: instance.url, kind: .shader)
                     case .logs: LogsView(root: instance.url)

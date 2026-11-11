@@ -1,4 +1,14 @@
+import CryptoKit
 import SwiftUI
+
+/// A native mod an instance asked for: built into its own game framework on the Mac
+/// (ios/native-build.sh), since a phone can't compile.
+struct NativeModChoice: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String
+    var version: String
+    var sha256: String
+}
 
 /// One instance: its own game folder (`--game-dir` and `--home`): worlds, options.txt, packs,
 /// shaders, mods, servers, logs. Every instance shares the Minecraft files and the built
@@ -17,6 +27,21 @@ struct Instance: Codable, Identifiable, Hashable {
     var renderDistance: Int = 8
     var seed: String = ""
     var creative: Bool = true
+    /// The native mods this instance plays with (nil or empty: none).
+    var nativeMods: [NativeModChoice]?
+
+    /// The game framework this instance plays: HorizonGame without native mods, else one named
+    /// after the set (the same set in two instances shares one framework). native-build.sh
+    /// names its frameworks the same way.
+    var gameName: String {
+        let mods = (nativeMods ?? []).map { "\($0.id)@\($0.version)" }.sorted()
+        guard !mods.isEmpty else { return GameBridge.baseGame }
+        let digest = SHA256.hash(data: Data(mods.joined(separator: "\n").utf8))
+        return "HorizonGame-" + digest.prefix(6).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Its native mods are built into the app (or it has none).
+    var gameBuilt: Bool { GameBridge.hasGame(gameName) }
 
     var isDefault: Bool { folder.isEmpty }
     var url: URL {

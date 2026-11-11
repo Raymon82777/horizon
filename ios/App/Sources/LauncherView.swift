@@ -9,9 +9,37 @@ struct LauncherView: View {
     @AppStorage("tab") private var tab = Tab.play
     /// A world's own Play button (on an instance's Worlds) asks for it here: straight into it.
     @AppStorage("quickPlay") private var quickPlay = ""
+    /// Play pressed on an instance whose native mods aren't in the app yet.
+    @State private var pendingArgs: [String]?
 
     var body: some View {
-        HStack(spacing: 32) {
+        GeometryReader { geometry in
+            let wide = geometry.size.width > geometry.size.height
+            ScrollView {
+                (wide ? AnyLayout(HStackLayout(spacing: 32)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 28))) {
+                    columns(wide: wide)
+                }
+                .padding(wide ? 32 : 24)
+                .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
+            }
+        }
+        .onAppear { installer.refresh() }
+        .onAppear(perform: quickPlayIfAsked)
+        .onChange(of: quickPlay) { quickPlayIfAsked() }
+        .alert("\(instances.current.name)'s native mods aren't built yet",
+               isPresented: Binding(get: { pendingArgs != nil }, set: { if !$0 { pendingArgs = nil } })) {
+            Button("Play without them") {
+                if let args = pendingArgs { start(args, instances.current, anyway: true) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Native mods are compiled into the game on your Mac: run ios/install.sh there with the phone connected, and they'll be in the next install.")
+        }
+    }
+
+    /// The title, status and account; then the instance and Play: side by side in landscape,
+    /// one above the other in portrait.
+    @ViewBuilder private func columns(wide: Bool) -> some View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Horizon")
                     .font(.system(size: 44, weight: .bold, design: .rounded))
@@ -48,12 +76,7 @@ struct LauncherView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(installer.state != .ready || launching || accounts.busy)
             }
-            .frame(width: 320)
-        }
-        .padding(32)
-        .onAppear { installer.refresh() }
-        .onAppear(perform: quickPlayIfAsked)
-        .onChange(of: quickPlay) { quickPlayIfAsked() }
+            .frame(width: wide ? 320 : nil)
     }
 
     @ViewBuilder private var status: some View {
@@ -119,6 +142,19 @@ struct LauncherView: View {
         }
     }
 
+    /// The instance's game framework; one whose native mods aren't built yet asks first.
+    private func start(_ args: [String], _ instance: Instance, anyway: Bool = false) {
+        if !instance.gameBuilt && !anyway {
+            pendingArgs = args
+            return
+        }
+        do {
+            try GameBridge.run(arguments: args, game: instance.gameBuilt ? instance.gameName : GameBridge.baseGame)
+        } catch {
+            accounts.error = error.localizedDescription
+        }
+    }
+
     private func quickPlayIfAsked() {
         guard !quickPlay.isEmpty else { return }
         let world = quickPlay
@@ -137,7 +173,7 @@ struct LauncherView: View {
         try? FileManager.default.createDirectory(at: instance.url, withIntermediateDirectories: true)
         instances.markPlayed()
         guard let account = accounts.current else {
-            GameBridge.run(arguments: args)
+            start(args, instance)
             return
         }
         launching = true
@@ -146,7 +182,7 @@ struct LauncherView: View {
             defer { launching = false }
             do {
                 let session = try await accounts.sessionFile(for: account)
-                GameBridge.run(arguments: args + ["--session-file", session.path])
+                start(args + ["--session-file", session.path], instance)
             } catch {
                 accounts.error = error.localizedDescription
             }

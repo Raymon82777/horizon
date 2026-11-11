@@ -1733,9 +1733,16 @@ name = "horizon-ios"
 version = "0.1.0"
 dependencies = [
  "horizon-client",
- "horizon-facts",
  "horizon-mods",
  "horizon-threads",
+]
+
+[[package]]
+name = "horizon-ios-tools"
+version = "0.1.0"
+dependencies = [
+ "horizon-facts",
+ "horizon-mods",
  "serde_json",
  "zip",
 ]
