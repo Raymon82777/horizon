@@ -10,6 +10,12 @@ struct LauncherView: View {
     @ObservedObject var installer: Installer
     @ObservedObject var accounts: Accounts
     @State private var launching = false
+    @AppStorage("tab") private var tab = Tab.play
+
+    private var worldExists: Bool {
+        FileManager.default.fileExists(
+            atPath: GameFolders.saves.appendingPathComponent(world).appendingPathComponent("level.dat").path)
+    }
 
     var body: some View {
         HStack(spacing: 32) {
@@ -26,23 +32,36 @@ struct LauncherView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 14) {
-                TextField("World", text: $world)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Seed (optional)", text: $seed)
-                    .textFieldStyle(.roundedBorder)
-                Toggle("Creative", isOn: $creative)
+                if worldExists {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text("World").font(.caption).foregroundStyle(.secondary)
+                            Text(world).font(.headline)
+                        }
+                        Spacer()
+                        Button("Change") { tab = .worlds }
+                    }
+                } else {
+                    // A new world: its name, seed and mode apply once, when it's generated.
+                    TextField("New world name", text: $world)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Seed (optional)", text: $seed)
+                        .textFieldStyle(.roundedBorder)
+                    Toggle("Creative", isOn: $creative)
+                }
                 VStack(alignment: .leading) {
                     Text("Render distance: \(Int(renderDistance)) chunks")
                     Slider(value: $renderDistance, in: 2...32, step: 1)
                 }
                 Button(action: play) {
-                    Text("Play")
+                    Text(worldExists ? "Play" : "Create & play")
                         .font(.title2.bold())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(installer.state != .ready || launching || accounts.busy)
+                .disabled(installer.state != .ready || launching || accounts.busy
+                          || world.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .frame(width: 320)
         }
@@ -82,8 +101,10 @@ struct LauncherView: View {
     private func play() {
         var args = ["--resources", "resources", "--home", ".", "--game-dir", ".",
                     "--world", world, "--render-distance", String(Int(renderDistance))]
-        if !seed.isEmpty { args += ["--seed", seed] }
-        if creative { args.append("--creative") }
+        if !worldExists {
+            if !seed.isEmpty { args += ["--seed", seed] }
+            if creative { args.append("--creative") }
+        }
         guard let account = accounts.current else {
             GameBridge.run(arguments: args)
             return

@@ -58,7 +58,9 @@ Resources
 ### M6: polish
 - [ ] UIPasteboard clipboard, AVSpeechSynthesizer narrator
 - [x] Launcher tabs (`ios/App/Sources/Screens/`): Worlds (play, new, rename, duplicate, delete, zip import and export), Packs & mods (resource packs, shader packs, `.hmod` import and delete), Logs (latest log, crash reports), Settings (accounts, rebuild resources, storage, about)
-- [ ] App icon; TestFlight-style build script
+- [x] App icon (original pixel-art sunset, `ios/tools/make-icon.swift`), dark launch screen, version 0.2.0; Files-app sharing and above-60 Hz keys in `ios/App/Info.plist`
+- [x] Play tab: seed and mode only for a new world
+- [ ] TestFlight-style build script
 
 ## Known platform constraints
 - No JIT: Horizon's wasm mods need an interpreter runtime on iOS (out of scope for now).

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged with the generated keys (project.yml INFOPLIST_KEY_*): the launch screen in
+	     the icon's night sky instead of white. -->
+	<!-- Not among Xcode's INFOPLIST_KEY_ settings, so they live here: the game folder in the
+	     Files app (On My iPhone → Horizon), and frame rates above 60 on ProMotion iPhones. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+</dict>
+</plist>
