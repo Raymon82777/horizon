@@ -29,4 +29,4 @@ fi
 [ "${1:-}" = --no-check ] && exit 0
 IPHONEOS_DEPLOYMENT_TARGET=17.0 cargo check -p horizon-ios --target aarch64-apple-ios
 cargo test -q -p horizon-facts
-echo "Merged and checked. Rebuild the app (ios/App) and push ios-main when ready."
+echo "Merged and checked. Install it with ios/install.sh, and push ios-main when ready."

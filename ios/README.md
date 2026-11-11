@@ -9,6 +9,7 @@ ios/
   rust/horizon-facts/  resources without Java: pack-facts (computer) / assemble (device)
   rust/winit/          winit 0.30.13 + embedded iOS mode (patched in via the root Cargo.toml)
   sync-upstream.sh     fetch + merge upstream/main + check the iOS build
+  install.sh           build the app and install it on the iPhone
   ROADMAP.md           milestones toward a self-contained launcher
   SIGN_IN_SETUP.md     the Azure app and Mojang approval Microsoft sign-in needs
   IOS_SPIKE.md         the original feasibility spike and measurements
@@ -30,19 +31,17 @@ ios/sync-upstream.sh        # fetch, merge upstream/main, check the iOS build
 git push fork ios-main
 ```
 
-Then rebuild and reinstall the app. The game is compiled into it.
+Then run `ios/install.sh`: the game is compiled into the app.
 
 Always merge, never rebase: ios-main is shared history. If a merge conflicts, it's in one of the files listed above. Keep upstream's change and re-apply the iOS `cfg` gate.
 
 ## Building the app
 
 ```sh
-cd ios/App
-xcodegen
-xcodebuild -project Horizon.xcodeproj -scheme Horizon -configuration Release \
-  -destination id=<device UDID> -allowProvisioningUpdates -derivedDataPath build build
-xcrun devicectl device install app --device <device UDID> build/Build/Products/Release-iphoneos/Horizon.app
+ios/install.sh --launch     # build, install on the first reachable iPhone (else iPad), open it
 ```
+
+`--device NAME|UDID` (or `HORIZON_IOS_DEVICE`) picks another device, and `--debug` makes a Debug build. The phone has to be paired with this Mac. For Wi-Fi installs, tick **Connect via network** for it in Xcode → Window → Devices and Simulators, once.
 
 The build runs `build-rust.sh` (`cargo build --release -p horizon-ios --target aarch64-apple-ios`) first. It bundles the facts pack from `.mc/facts/horizon-facts-26.3.zip`, which you build once with:
 
