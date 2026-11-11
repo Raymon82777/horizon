@@ -36,10 +36,10 @@ Resources
 - [x] Swift (`ios/App/Sources/Auth/`): ASWebAuthenticationSession (auth code + PKCE), XBL → XSTS → `login_with_xbox`, entitlement check, profile; tokens in the Keychain; several accounts; renewal and owner check at every Play. Until the fork's own Azure app is approved, signs in on the legacy live.com path with the official launcher's ID, as Amethyst does (temporary; `ios/SIGN_IN_SETUP.md`). Tested on the iPhone: sign-in, an online-mode server, skins
 - [x] Hand the session to the game the way the desktop launcher does (`--session-file`, 0600 in Caches, read once and deleted)
 
-### M3: download the game on the device
-- [ ] Owner-gated: only after the entitlement check passes (upstream's rule, #4942)
-- [ ] Version manifest → 26.3 JSON → client jar (SHA-1) and asset index and objects (about 480 MB, resumable, SHA-1 per object), into the app's Application Support
-- [ ] Libraries aren't needed on the device (no JVM); only what `assemble` reads
+### M3: download the game on the device (done)
+- [x] Owner-gated: the Minecraft services are asked again right before a download (upstream's rule)
+- [x] `ios/App/Sources/Downloader.swift`: version manifest → 26.3 JSON → client jar, asset index and objects, SHA-1 and size checked, 16 at a time, resumable; then resources assemble. No libraries (no JVM)
+- [x] Settings → Check and repair game files: the same run over an existing install (tested on the iPhone)
 
 ### M4: assemble resources without Java (#1750's design) (done on the device, 2026-11-10)
 - [x] `horizon-facts pack-facts`: package only the computed tables (the data generator's reports plus the 8 exporters' output, the files in `.mc/resources` that don't come from the jar or asset store) as `horizon-facts-26.3.zip` with a SHA-256

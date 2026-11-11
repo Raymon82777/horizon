@@ -77,10 +77,20 @@ struct LauncherView: View {
         case .needsGame:
             Label("Minecraft 26.3 isn't installed", systemImage: "arrow.down.circle")
                 .foregroundStyle(.orange)
-            Text("For now, copy versions/26.3 and assets/ from a Minecraft folder into the app's Documents/minecraft (Files app or devicectl). Signing in and downloading comes next.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Button("Check again") { installer.refresh() }
+            if let account = accounts.current {
+                Button {
+                    Task { await download(for: account) }
+                } label: {
+                    Label("Download Minecraft 26.3 (about 500 MB)", systemImage: "arrow.down.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                Text("From Mojang, for \(account.name), who owns the game. Wi-Fi recommended; keep Horizon open until it's done. It can stop and go on later.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text("Sign in with the Microsoft account that owns Minecraft: Java Edition to download it here, or copy versions/26.3 and assets/ into Horizon's minecraft folder in the Files app.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Button("Check again") { installer.refresh() }
+            }
         case .canAssemble:
             Label("Minecraft 26.3 found", systemImage: "shippingbox")
             Button("Build resources") { installer.assemble() }
@@ -90,11 +100,32 @@ struct LauncherView: View {
                 Text("Building resources… \(Int(fraction * 100))%")
             }
             .frame(maxWidth: 360)
+        case .downloading(let fraction, let step):
+            ProgressView(value: fraction) {
+                Text(step)
+            } currentValueLabel: {
+                Text("\(Int(fraction * 100))%")
+            }
+            .frame(maxWidth: 360)
         case .failed(let message):
             Label("Couldn't build resources", systemImage: "xmark.octagon.fill")
                 .foregroundStyle(.red)
             Text(message).font(.footnote).foregroundStyle(.secondary)
             Button("Try again") { installer.refresh() }
+        }
+    }
+
+    /// The owner gate: the Minecraft services are asked again before anything is downloaded.
+    private func download(for account: Account) async {
+        accounts.error = nil
+        do {
+            guard try await accounts.owns(account) else {
+                accounts.error = "\(account.name) doesn't own Minecraft: Java Edition, so Horizon can't download it."
+                return
+            }
+            installer.download()
+        } catch {
+            accounts.error = error.localizedDescription
         }
     }
 

@@ -30,10 +30,27 @@ struct SettingsView: View {
                     LabeledContent("Resources", value: installer.state == .ready ? "Ready" : "Not built")
                     Button("Rebuild resources", systemImage: "hammer") { rebuilding = true }
                         .disabled(!(installer.state == .ready || installer.state == .canAssemble))
+                    if let account = accounts.current {
+                        Button("Check and repair game files", systemImage: "checkmark.shield") {
+                            Task {
+                                if (try? await accounts.owns(account)) == true {
+                                    installer.download(then: false)
+                                } else {
+                                    installer.lastDownload = "\(account.name) doesn't own Minecraft: Java Edition."
+                                }
+                            }
+                        }
+                        .disabled(isBusy)
+                    }
+                    if case .downloading(let fraction, let step) = installer.state {
+                        ProgressView(value: fraction) { Text(step).font(.caption) }
+                    } else if let note = installer.lastDownload {
+                        Text(note).font(.caption).foregroundStyle(.secondary)
+                    }
                 } header: {
                     Text("Game")
                 } footer: {
-                    Text("Rebuilding redoes the game's resources from your Minecraft files. It takes a few seconds; worlds aren't touched.")
+                    Text("Checking compares every Minecraft file with Mojang's list and downloads any that are missing or damaged. Rebuilding redoes the game's resources from those files in a few seconds. Worlds aren't touched.")
                 }
                 Section("Storage") {
                     ForEach(usage, id: \.0) { name, bytes in
@@ -56,6 +73,13 @@ struct SettingsView: View {
         .fullScreenCover(isPresented: $editingTouch) { TouchLayoutEditor() }
         .confirmationDialog("Rebuild the game's resources?", isPresented: $rebuilding, titleVisibility: .visible) {
             Button("Rebuild") { installer.rebuild() }
+        }
+    }
+
+    private var isBusy: Bool {
+        switch installer.state {
+        case .downloading, .assembling: true
+        default: false
         }
     }
 

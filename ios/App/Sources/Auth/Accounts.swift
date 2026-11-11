@@ -91,6 +91,20 @@ final class Accounts: ObservableObject {
         return try Self.writeSession(account, secrets)
     }
 
+    /// Asks the Minecraft services again whether `account` owns the game (the owner gate for
+    /// downloading it). Offline, the last answer stands.
+    func owns(_ account: Account) async throws -> Bool {
+        guard let data = Keychain.load(account: account.uuid),
+              var secrets = try? JSONDecoder().decode(Secrets.self, from: data)
+        else { return false }
+        var account = account
+        do {
+            (account, secrets) = try await MicrosoftAuth.refresh(secrets)
+            try store(account, secrets)
+        } catch is URLError {}
+        return secrets.owns
+    }
+
     private func store(_ account: Account, _ secrets: Secrets) throws {
         try Keychain.save(try JSONEncoder().encode(secrets), account: account.uuid)
         if let i = list.firstIndex(where: { $0.uuid == account.uuid }) {

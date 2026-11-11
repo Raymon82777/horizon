@@ -103,7 +103,16 @@ done
 
 if [ $launch -eq 1 ]; then
     echo "==> Opening Horizon"
-    xcrun devicectl device process launch --device "$udid" com.raymcdonald.horizon >/dev/null 2>&1 ||
+    # A locked device keeps the launch waiting: give it 20 seconds.
+    xcrun devicectl device process launch --device "$udid" com.raymcdonald.horizon >/dev/null 2>&1 &
+    pid=$!
+    waited=0
+    while kill -0 "$pid" 2>/dev/null && [ $waited -lt 20 ]; do sleep 1; waited=$((waited + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null
         echo "    couldn't open it (locked?): tap Horizon on the device" >&2
+    elif ! wait "$pid"; then
+        echo "    couldn't open it: tap Horizon on the device" >&2
+    fi
 fi
 echo "==> Done: Horizon $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist") is on $name"

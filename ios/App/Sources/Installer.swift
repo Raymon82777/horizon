@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Builds the game's resources on the device from the facts pack in the app bundle and the
 /// player's own Minecraft 26.3 files (horizon-prepare's assemble; no Java).
@@ -9,11 +10,17 @@ final class Installer: ObservableObject {
         case ready              // resources assembled
         case canAssemble        // inputs present, resources not built
         case assembling(Double)
+        case downloading(Double, String)
         case failed(String)
     }
 
     static let version = "26.3"
-    static let assetIndex = "34"
+    /// The asset index the version file names (34 for 26.3, when there's no version file yet).
+    var assetIndex: String {
+        let file = minecraftDir.appendingPathComponent("versions/\(Self.version)/\(Self.version).json")
+        let json = (try? Data(contentsOf: file)).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
+        return (json?["assetIndex"] as? [String: Any])?["id"] as? String ?? "34"
+    }
 
     @Published private(set) var state: State = .needsGame
 
@@ -27,16 +34,46 @@ final class Installer: ObservableObject {
 
     func refresh() {
         if case .assembling = state { return }
+        if case .downloading = state { return }
         let fm = FileManager.default
         if fm.fileExists(atPath: resourcesDir.appendingPathComponent("horizon-prepare.json").path) {
             state = .ready
         } else if fm.fileExists(atPath: clientJar.path),
-                  fm.fileExists(atPath: assetsDir.appendingPathComponent("indexes/\(Self.assetIndex).json").path) {
+                  fm.fileExists(atPath: assetsDir.appendingPathComponent("indexes/\(assetIndex).json").path) {
             state = factsPack == nil ? .failed("This build has no facts pack (horizon-facts-\(Self.version).zip).") : .canAssemble
         } else {
             state = .needsGame
         }
     }
+
+    /// Downloads (or repairs) Minecraft from Mojang, then builds the resources if they aren't
+    /// there yet. Only for an account that owns the game: the caller has asked (`Accounts.owns`).
+    func download(then assembleAfter: Bool = true) {
+        let wasReady = state == .ready
+        state = .downloading(0, "Starting…")
+        let downloader = Downloader(version: Self.version, root: minecraftDir) { [weak self] progress in
+            Task { @MainActor in
+                guard let self, case .downloading = self.state else { return }
+                self.state = .downloading(progress.fraction, progress.step)
+            }
+        }
+        Task {
+            // The screen stays on: iOS stops a download in an app that isn't in front.
+            UIApplication.shared.isIdleTimerDisabled = true
+            defer { UIApplication.shared.isIdleTimerDisabled = false }
+            do {
+                let fetched = try await downloader.run()
+                state = .needsGame
+                lastDownload = fetched == 0 ? "All game files were already correct." : "Downloaded or repaired \(fetched) files."
+                refresh()
+                if wasReady { state = .ready } else if assembleAfter, state == .canAssemble { assemble() }
+            } catch {
+                state = .failed("Download stopped: \(error.localizedDescription) Tap Try again to go on where it stopped.")
+            }
+        }
+    }
+
+    @Published var lastDownload: String?
 
     /// Rebuild from scratch: the old resources go first (assemble renames its new tree into place).
     func rebuild() {
