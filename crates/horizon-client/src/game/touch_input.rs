@@ -1,4 +1,4 @@
-//! ios: touch controls (Raymon82777/horizon's iOS fork; not upstream). Fingers on the screen
+//! ios: touch controls (Raymon82777/horizon-ios's iOS fork; not upstream). Fingers on the screen
 //! drive the game through the same paths a controller does: the move vector (`input_move`),
 //! the view turn (`input_look`) and the bound actions (`pad_action`), so every mapping and
 //! rule the pad follows holds for touch too. Out of play (title, menus, inventories) a finger is

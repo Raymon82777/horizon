@@ -60,7 +60,7 @@ struct SettingsView: View {
                 Section {
                     LabeledContent("Horizon for iOS", value: Bundle.main.version)
                     Link("Horizon on GitHub", destination: URL(string: "https://github.com/horizon-rust/horizon")!)
-                    Link("This fork", destination: URL(string: "https://github.com/Raymon82777/horizon")!)
+                    Link("This fork", destination: URL(string: "https://github.com/Raymon82777/horizon-ios")!)
                 } header: {
                     Text("About")
                 } footer: {

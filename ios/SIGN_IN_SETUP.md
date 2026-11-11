@@ -20,7 +20,7 @@ New Azure apps get HTTP 403 from the Minecraft services until Mojang approves th
 
 - **Client ID:** the GUID from step 1.
 - **App name:** Horizon for iOS.
-- **Project URL:** https://github.com/Raymon82777/horizon
+- **Project URL:** https://github.com/Raymon82777/horizon-ios
 - **Description:** "Personal iOS port of Horizon, an open-source Minecraft Java Edition client written in Rust. Signs the owner in to verify they own the game and to join online-mode servers."
 
 Until approval comes through, signing in works up to the Minecraft step, then says "This app is not approved by Mojang yet".

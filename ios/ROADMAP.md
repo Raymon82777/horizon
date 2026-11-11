@@ -1,6 +1,6 @@
 # Horizon for iOS: self-contained launcher roadmap
 
-Fork: `Raymon82777/horizon`, long-lived branch **`ios-main`** (built on the spike in `IOS_SPIKE.md` (in this folder)). Upstream-able platform fixes go out as small PRs (`pr-drafts/`); iOS-only pieces live here.
+Fork: `Raymon82777/horizon-ios`, long-lived branch **`ios-main`** (built on the spike in `IOS_SPIKE.md` (in this folder)). Upstream-able platform fixes go out as small PRs (`pr-drafts/`); iOS-only pieces live here.
 
 **Goal:** one iPhone/iPad app. Sign in with Microsoft, download Minecraft 26.3 for an account that owns it, assemble Horizon's resources on the device, and play. No computer, no JVM, no JIT.
 
