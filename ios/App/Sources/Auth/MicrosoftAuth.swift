@@ -18,6 +18,8 @@ struct Secrets: Codable {
     var xuid: String?
     /// The last ownership answer (the owner gate): kept with the tokens, not in public data.
     var owns: Bool
+    /// Signed in on the temporary legacy path (AuthConfig.legacy): renewals go there too.
+    var legacy: Bool?
 }
 
 /// The public part of an account.
@@ -41,8 +43,8 @@ enum MicrosoftAuth {
     /// The whole sign-in: the browser sheet, then the token chain and the owner checks.
     @MainActor
     static func signIn(anchor: ASPresentationAnchor) async throws -> (Account, Secrets) {
-        guard AuthConfig.configured else {
-            throw AuthError.message("This build has no Microsoft sign-in yet (ios/SIGN_IN_SETUP.md).")
+        if AuthConfig.legacy {
+            return try await legacySignIn(anchor: anchor)
         }
         let verifier = randomURLSafe(32)
         let challenge = base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
@@ -77,9 +79,61 @@ enum MicrosoftAuth {
         return try await minecraft(from: ms)
     }
 
+    /// The temporary path (AuthConfig.legacy): the legacy live.com sign-in Amethyst uses.
+    @MainActor
+    private static func legacySignIn(anchor: ASPresentationAnchor) async throws -> (Account, Secrets) {
+        var url = URLComponents(string: "https://login.live.com/oauth20_authorize.srf")!
+        url.queryItems = [
+            .init(name: "client_id", value: AuthConfig.legacyClientID),
+            .init(name: "response_type", value: "code"),
+            .init(name: "scope", value: AuthConfig.legacyScope),
+            .init(name: "redirect_url", value: AuthConfig.legacyRedirect),
+        ]
+        let callback = try await browser(url: url.url!, anchor: anchor,
+                                         scheme: AuthConfig.legacyCallbackScheme, ephemeral: true)
+        let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func item(_ name: String) -> String? { items.first { $0.name == name }?.value }
+        if let error = item("error") {
+            if error.hasPrefix("access_denied") { throw CancellationError() }
+            throw AuthError.message(item("error_description") ?? "Microsoft sign-in failed (\(error)).")
+        }
+        guard let code = item("code") else {
+            throw AuthError.message("Microsoft sign-in returned an unexpected answer.")
+        }
+        let ms = try await legacyToken(["grant_type": "authorization_code", "code": code])
+        var (account, secrets) = try await minecraft(from: ms, legacy: true)
+        secrets.legacy = true
+        return (account, secrets)
+    }
+
+    private static func legacyToken(_ fields: [String: String]) async throws -> MSTokens {
+        var url = URLComponents(string: "https://login.live.com/oauth20_token.srf")!
+        var all = fields
+        all["client_id"] = AuthConfig.legacyClientID
+        all["redirect_url"] = AuthConfig.legacyRedirect
+        all["scope"] = AuthConfig.legacyScope
+        url.queryItems = all.map { URLQueryItem(name: $0.key, value: $0.value) }
+        let (data, _) = try await URLSession.shared.data(from: url.url!)
+        let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        if let error = body["error"] as? String {
+            if error == "invalid_grant" { throw AuthError.message("The sign-in expired. Sign in again.") }
+            throw AuthError.message(body["error_description"] as? String ?? "Microsoft sign-in failed (\(error)).")
+        }
+        guard let access = body["access_token"] as? String else {
+            throw AuthError.message("Microsoft sign-in returned no token.")
+        }
+        return MSTokens(access: access, refresh: body["refresh_token"] as? String ?? fields["refresh_token"] ?? "")
+    }
+
     /// Renews the Minecraft token from the refresh token when it has under an hour left, then
     /// asks again whether the account owns the game (the owner gate, at every launch).
     static func refresh(_ secrets: Secrets) async throws -> (Account, Secrets) {
+        if secrets.legacy == true {
+            let ms = try await legacyToken(["grant_type": "refresh_token", "refresh_token": secrets.refreshToken])
+            var (account, renewed) = try await minecraft(from: ms, legacy: true)
+            renewed.legacy = true
+            return (account, renewed)
+        }
         let ms = try await oauth([
             "grant_type": "refresh_token",
             "refresh_token": secrets.refreshToken,
@@ -91,7 +145,7 @@ enum MicrosoftAuth {
 
     private struct MSTokens { let access: String; let refresh: String }
 
-    private static func minecraft(from ms: MSTokens) async throws -> (Account, Secrets) {
+    private static func minecraft(from ms: MSTokens, legacy: Bool = false) async throws -> (Account, Secrets) {
         // Xbox Live.
         let xbl = try await json(
             URL(string: "https://user.auth.xboxlive.com/user/authenticate")!,
@@ -99,7 +153,8 @@ enum MicrosoftAuth {
                 "Properties": [
                     "AuthMethod": "RPS",
                     "SiteName": "user.auth.xboxlive.com",
-                    "RpsTicket": "d=\(ms.access)",
+                    // The legacy live.com token goes as it is; v2.0 tokens take "d=".
+                    "RpsTicket": legacy ? ms.access : "d=\(ms.access)",
                 ],
                 "RelyingParty": "http://auth.xboxlive.com",
                 "TokenType": "JWT",
@@ -226,10 +281,12 @@ enum MicrosoftAuth {
     // MARK: Browser sheet
 
     @MainActor
-    private static func browser(url: URL, anchor: ASPresentationAnchor) async throws -> URL {
+    private static func browser(url: URL, anchor: ASPresentationAnchor,
+                                scheme: String = AuthConfig.callbackScheme,
+                                ephemeral: Bool = false) async throws -> URL {
         let provider = AnchorProvider(anchor: anchor)
         return try await withCheckedThrowingContinuation { continuation in
-            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: AuthConfig.callbackScheme) { callback, error in
+            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { callback, error in
                 if let callback {
                     continuation.resume(returning: callback)
                 } else if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
@@ -240,7 +297,7 @@ enum MicrosoftAuth {
             }
             session.presentationContextProvider = provider
             // Microsoft's own cookies: an already signed-in account is offered in the picker.
-            session.prefersEphemeralWebBrowserSession = false
+            session.prefersEphemeralWebBrowserSession = ephemeral
             objc_setAssociatedObject(session, &anchorKey, provider, .OBJC_ASSOCIATION_RETAIN)
             session.start()
         }

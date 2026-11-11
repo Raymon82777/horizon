@@ -1,6 +1,8 @@
 # Microsoft sign-in: what Ray registers
 
-The app's sign-in code is done (`ios/App/Sources/Auth/`). It needs this fork's own Azure app, approved by Mojang. Horizon's rules (`docs/forking.md`, "Microsoft sign-in in a fork") don't allow using Horizon's client ID, or any other launcher's, including Amethyst's. Until these steps are done, the app shows "Microsoft sign-in isn't set up in this build yet" and plays offline.
+The app's sign-in code is done (`ios/App/Sources/Auth/`). It should run under this fork's own Azure app, approved by Mojang. Horizon's rules (`docs/forking.md`, "Microsoft sign-in in a fork") don't allow using Horizon's client ID.
+
+**For now (2026-11-10, Ray's choice):** with `AuthConfig.clientID` empty, the app signs in the way Amethyst and PojavLauncher do. It uses the official Minecraft Launcher's legacy client ID (`00000000402b5328`) on `login.live.com`. That works without any registration, and is tested: sign-in, an online-mode server and skins all work. But it's Mojang's ID: Microsoft can block it at any time, and a build using it mustn't be shared. Setting your own client ID (step 3) switches the app to your app automatically.
 
 ## 1. Register the Azure app (about 5 minutes)
 
