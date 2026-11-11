@@ -1,8 +1,8 @@
-# Microsoft sign-in: what Ray registers
+# Microsoft sign-in: what the fork's owner registers
 
 The app's sign-in code is done (`ios/App/Sources/Auth/`). It should run under this fork's own Azure app, approved by Mojang. Horizon's rules (`docs/forking.md`, "Microsoft sign-in in a fork") don't allow using Horizon's client ID.
 
-**For now (2026-11-10, Ray's choice):** with `AuthConfig.clientID` empty, the app signs in the way Amethyst and PojavLauncher do. It uses the official Minecraft Launcher's legacy client ID (`00000000402b5328`) on `login.live.com`. That works without any registration, and is tested: sign-in, an online-mode server and skins all work. But it's Mojang's ID: Microsoft can block it at any time, and a build using it mustn't be shared. Setting your own client ID (step 3) switches the app to your app automatically.
+**For now (2026-11-10):** with `AuthConfig.clientID` empty, the app signs in the way Amethyst and PojavLauncher do. It uses the official Minecraft Launcher's legacy client ID (`00000000402b5328`) on `login.live.com`. That works without any registration, and is tested: sign-in, an online-mode server and skins all work. But it's Mojang's ID: Microsoft can block it at any time, and a build using it mustn't be shared. Setting your own client ID (step 3) switches the app to your app automatically.
 
 ## 1. Register the Azure app (about 5 minutes)
 
@@ -20,7 +20,7 @@ New Azure apps get HTTP 403 from the Minecraft services until Mojang approves th
 
 - **Client ID:** the GUID from step 1.
 - **App name:** Horizon for iOS.
-- **Project URL:** https://github.com/Raymon82777/horizon-ios
+- **Project URL:** your fork's GitHub address
 - **Description:** "Personal iOS port of Horizon, an open-source Minecraft Java Edition client written in Rust. Signs the owner in to verify they own the game and to join online-mode servers."
 
 Until approval comes through, signing in works up to the Minecraft step, then says "This app is not approved by Mojang yet".

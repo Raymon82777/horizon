@@ -1,5 +1,7 @@
 # iOS fork only: every night, try merging upstream main into ios-main and check that the iOS
-# layer still builds. Nothing is pushed; a failure opens (or comments on) one issue.
+# layer still builds. Nothing is pushed; a failure opens (or comments on) one issue. Runs only in
+# a repository that turns it on: repository variable IOS_UPSTREAM_CHECK = true
+# (gh variable set IOS_UPSTREAM_CHECK --body true).
 name: ios upstream check
 
 on:
@@ -15,7 +17,7 @@ permissions:
 
 jobs:
   check:
-    if: github.repository == 'Raymon82777/horizon-ios'
+    if: vars.IOS_UPSTREAM_CHECK == 'true'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4

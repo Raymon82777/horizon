@@ -6,6 +6,9 @@ import SwiftUI
 struct NativeModsView: View {
     let instanceID: String
     @EnvironmentObject private var instances: Instances
+    @ObservedObject private var mac = MacBuild.shared
+    @Environment(\.openURL) private var openURL
+    @State private var confirmingBuild = false
     @State private var index: RegistryIndex?
     @State private var query = ""
     @State private var browsing = false
@@ -34,6 +37,9 @@ struct NativeModsView: View {
         List {
             Section {
                 status
+            }
+            if !chosen.isEmpty, instance?.gameBuilt != true || mac.status != nil {
+                macBuildSection
             }
             Section {
                 if chosen.isEmpty {
@@ -79,6 +85,68 @@ struct NativeModsView: View {
         .sheet(isPresented: $browsing) {
             NativeModPicker(chosen: chosen) { project, version in add(project, version) }
         }
+        .alert("Build on your Mac?", isPresented: $confirmingBuild) {
+            Button("Build") { Task { await mac.start(instances.list) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your Mac builds every instance's native mods into a new copy of the app, then you install it from Safari. Native mods aren't sandboxed: build only mods you trust.")
+        }
+        .task(id: mac.building) {
+            // Follows a build while this page is open: one look, then every 5 seconds while it runs.
+            guard MacBuild.base != nil else { return }
+            await mac.refresh()
+            while mac.building, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                await mac.refresh()
+            }
+        }
+    }
+
+    @ViewBuilder private var macBuildSection: some View {
+        Section {
+            if let host = MacBuild.host {
+                switch mac.status?.state {
+                case "building"?:
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        VStack(alignment: .leading) {
+                            Text("Building on your Mac…")
+                            if let step = mac.status?.step {
+                                Text(step).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    if let last = mac.status?.log?.last {
+                        Text(last).font(.caption2.monospaced()).foregroundStyle(.tertiary).lineLimit(2)
+                    }
+                case "done"?:
+                    if let install = mac.status?.install.flatMap(URL.init(string:)) {
+                        Button("Install the new build", systemImage: "arrow.down.app") { openURL(install) }
+                    }
+                    Text("Opens Safari: tap Install there. Worlds and settings are kept.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Build again", systemImage: "hammer") { confirmingBuild = true }
+                case "failed"?:
+                    Label("The last build failed", systemImage: "xmark.octagon.fill").foregroundStyle(.red)
+                    ForEach(Array((mac.status?.log ?? []).suffix(4).enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(3)
+                    }
+                    Button("Try again", systemImage: "hammer") { confirmingBuild = true }
+                default:
+                    Button("Build on my Mac", systemImage: "hammer") { confirmingBuild = true }
+                }
+                if let error = mac.error {
+                    Text(error).font(.caption).foregroundStyle(.orange)
+                }
+                Text("Builds on \(host) over Tailscale. On the Mac, ios/build-server.py --trust-native-code must be running.")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            } else {
+                Text("To build from anywhere, install the app once from a Mac that runs Tailscale (ios/install.sh or ios/remote-install.sh).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Remote build")
+        }
     }
 
     @ViewBuilder private var status: some View {
@@ -90,7 +158,7 @@ struct NativeModsView: View {
         } else {
             Label("Waiting for a Mac build", systemImage: "desktopcomputer")
                 .foregroundStyle(.orange)
-            Text("Connect the phone to your Mac and run ios/install.sh --native there. Until then this instance plays without its native mods.")
+            Text("Build them on your Mac below, or connect the phone and run ios/install.sh --native there. Until then this instance plays without its native mods.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

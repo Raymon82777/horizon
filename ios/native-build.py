@@ -13,7 +13,8 @@ launcher does (docs/native-mods.md). Frameworks no instance uses any more are re
 
 Native mods are unsandboxed code: building them needs --trust-native-code, the player's decision.
 
-Usage: ios/native-build.py --device UDID [--trust-native-code] [--dry-run]
+Usage: ios/native-build.py (--device UDID | --instances FILE) [--trust-native-code] [--dry-run]
+  --instances FILE   the instances the phone sent (build-server.py) instead of reading the phone
 """
 import argparse
 import hashlib
@@ -36,7 +37,20 @@ MIXINS_GIT = "https://github.com/horizon-rust/horizon-mixins"
 # docs/native-mods.md: the launcher's horizon-mixins (native_mods::MIXINS_REV) for mods that
 # don't name one.
 MIXINS_REV = "5a64af938ec86b00d53d16a408aabc0038fb3e57"
-BUNDLE_ID = "com.raymcdonald.horizon"
+
+
+def signing(key):
+    """A value of ios/signing.env (the shell's environment wins), as ios/signing.sh reads it."""
+    if os.environ.get(key):
+        return os.environ[key]
+    path = HERE / "signing.env"
+    if path.exists():
+        for line in path.read_text().splitlines():
+            name, _, value = line.partition("=")
+            if name.strip() == key and not line.lstrip().startswith("#"):
+                return value.split("#", 1)[0].strip().strip('"')
+    sys.exit(f"No {key}: set up signing first (cp ios/signing.env.example ios/signing.env, ios/README.md).")
+
 # What the staged source leaves out: build output, the player's Mojang files, git, the desktop
 # launcher and docs (not part of the game's build).
 STAGE_EXCLUDES = ["target", ".git", ".mc", "ios/build", "ios/App/build", "launcher", "docs", "pr-drafts"]
@@ -62,7 +76,7 @@ def phone_instances(device):
     with tempfile.TemporaryDirectory() as tmp:
         dest = Path(tmp) / "instances.json"
         run(["xcrun", "devicectl", "device", "copy", "from", "--device", device,
-             "--domain-type", "appDataContainer", "--domain-identifier", BUNDLE_ID,
+             "--domain-type", "appDataContainer", "--domain-identifier", signing("HORIZON_IOS_BUNDLE_ID"),
              "--source", "Library/Application Support/instances.json", "--destination", str(dest)],
             stdout=subprocess.DEVNULL)
         return json.loads(dest.read_text())["instances"]
@@ -191,13 +205,18 @@ def build_set(name, choices, index, trust):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--device", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--device", help="read the instances from this phone (devicectl)")
+    source.add_argument("--instances", type=Path, help="read them from this file ({\"instances\": [...]})")
     parser.add_argument("--trust-native-code", action="store_true")
     parser.add_argument("--dry-run", action="store_true", help="say what would be built, build nothing")
     parser.add_argument("--rebuild", action="store_true", help="build every set again")
     args = parser.parse_args()
 
-    instances = phone_instances(args.device)
+    if args.instances:
+        instances = json.loads(args.instances.read_text())["instances"]
+    else:
+        instances = phone_instances(args.device)
     sets = {}
     for inst in instances:
         mods = inst.get("nativeMods") or []

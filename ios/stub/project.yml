@@ -1,6 +1,5 @@
 name: HorizonStub
 options:
-  bundleIdPrefix: com.raymcdonald
   deploymentTarget:
     iOS: "17.0"
 targets:
@@ -9,9 +8,10 @@ targets:
     platform: iOS
     sources: [Stub]
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.raymcdonald.horizon
-      DEVELOPMENT_TEAM: BFH3MLCK9L
+      # From ios/signing.env: generate with `. ios/signing.sh` exported (here=ios).
+      PRODUCT_BUNDLE_IDENTIFIER: ${HORIZON_IOS_BUNDLE_ID}
+      DEVELOPMENT_TEAM: ${HORIZON_IOS_TEAM}
       CODE_SIGN_STYLE: Automatic
-      CODE_SIGN_ENTITLEMENTS: ../Horizon.entitlements
+      CODE_SIGN_ENTITLEMENTS: ${HORIZON_IOS_ENTITLEMENTS}
       GENERATE_INFOPLIST_FILE: YES
       INFOPLIST_KEY_UILaunchScreen_Generation: YES

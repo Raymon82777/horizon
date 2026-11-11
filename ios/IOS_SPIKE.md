@@ -39,8 +39,8 @@ Default features (`audio`, `controllers`, `horizon-extras`) build. The wasm mods
 ## 3. Host app and assets
 
 - `ios/build.sh`: `cargo rustc --target aarch64-apple-ios -p horizon-client --profile release` with the deployment target and stack size. A full release build takes about 25 min from clean, about 4 min to relink. The binary is 84 MB.
-- `ios/package.sh`: wraps the binary as `Horizon.app` (`ios/Info.plist`: landscape, `UIFileSharingEnabled`, `CADisableMinimumFrameDurationOnPhone`), embeds the profile, signs with team BFH3MLCK9L and installs through `devicectl`. Bundle ID `com.raymcdonald.horizon`. Its App ID has **Increased Memory Limit + Extended Virtual Addressing**; the profile came from the xcodegen stub in `ios/stub`. No Xcode project is needed for the game itself: winit's `run_app` starts `UIApplicationMain`, and wgpu gets the `CAMetalLayer` from winit's `UIView`.
-- Assets: there is no desktop install on this Mac, so the 26.3 client jar, version JSON, asset indexes and libraries came from **Ray's own Amethyst install on the iPhone** (`devicectl` copy from its data container). The only additions were the 26.3 server jar (from the URL in Ray's own version JSON, SHA-1 checked) and the stock LWJGL 3.4.3 jars that Amethyst replaces with its iOS build (SHA-1 checked). `horizon-prepare` ran on the Mac with Homebrew `openjdk@25` in 23 s and produced 221 MB of resources, copied to the app's Documents in about 70 s. No sounds were prepared, so the game is silent.
+- `ios/package.sh`: wraps the binary as `Horizon.app` (`ios/Info.plist`: landscape, `UIFileSharingEnabled`, `CADisableMinimumFrameDurationOnPhone`), embeds the profile, signs with the team in `ios/signing.env` and installs through `devicectl`. Bundle ID from `ios/signing.env`. Its App ID has **Increased Memory Limit + Extended Virtual Addressing**; the profile came from the xcodegen stub in `ios/stub`. No Xcode project is needed for the game itself: winit's `run_app` starts `UIApplicationMain`, and wgpu gets the `CAMetalLayer` from winit's `UIView`.
+- Assets: there is no desktop install on this Mac, so the 26.3 client jar, version JSON, asset indexes and libraries came from **the owner's own Amethyst install on the iPhone** (`devicectl` copy from its data container). The only additions were the 26.3 server jar (from the URL in that version JSON, SHA-1 checked) and the stock LWJGL 3.4.3 jars that Amethyst replaces with its iOS build (SHA-1 checked). `horizon-prepare` ran on the Mac with Homebrew `openjdk@25` in 23 s and produced 221 MB of resources, copied to the app's Documents in about 70 s. No sounds were prepared, so the game is silent.
 - All Mojang files and prepared resources sit in the git-excluded `.mc/` folder and are not committed.
 
 ## 4. Measurements (iPhone 17 Pro, release build, `--benchmark standard`)
@@ -97,7 +97,7 @@ Native 2622×1206, HDR10 (PQ) output, Fifo present (capped at 60, see below), 6 
 - **Upstream** the platform `cfg` fixes as small, separate PRs. They are desktop-neutral and match how #1813, #1751 and the Android input series were accepted. They also keep iOS compiling as main moves fast (the merge numbers are around #14000). Note that upstream is heavily agent-driven and gates contributions; PRs need `tools/pr_ready.py` output.
 - **Keep in a fork or a separate repo for now:** the app shell (Info.plist, signing, packaging), the `vtool` SDK stamp, and anything iOS-only that upstream hasn't asked for. Upstream explicitly isn't taking official mobile packaging yet ("desktop game comes first"), and d3xc0's Android client went the same way: fork first, then small PRs.
 - **UIScene support** belongs in winit itself (an upstream winit PR), which benefits everyone and keeps Horizon free of UIKit code.
-- Before contributing anything upstream, confirm with Ray. Nothing has been pushed, and no issues or PRs have been opened.
+- Before contributing anything upstream, confirm with the fork's owner. Nothing has been pushed, and no issues or PRs have been opened.
 
 ## How to reproduce
 
@@ -107,7 +107,7 @@ ios/build.sh release                          # aarch64-apple-ios horizon-client
 ios/package.sh release --install              # Horizon.app on the iPhone
 # resources: horizon-prepare on the Mac (JDK 25), then
 xcrun devicectl device copy to --device <UDID> --domain-type appDataContainer \
-  --domain-identifier com.raymcdonald.horizon --source .mc/resources --destination Documents/resources
+  --domain-identifier "$HORIZON_IOS_BUNDLE_ID" --source .mc/resources --destination Documents/resources
 ios/bench.sh 8                                # --benchmark standard at RD 8; report in .mc/dev-out/bench/
 ```
 

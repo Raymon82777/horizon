@@ -69,7 +69,11 @@ struct SettingsView: View {
                 Section {
                     LabeledContent("Horizon for iOS", value: Bundle.main.version)
                     Link("Horizon on GitHub", destination: URL(string: "https://github.com/horizon-rust/horizon")!)
-                    Link("This fork", destination: URL(string: "https://github.com/Raymon82777/horizon-ios")!)
+                    // The repository the app was built from (ios/signing.sh: git's origin).
+                    if let source = Bundle.main.object(forInfoDictionaryKey: "HorizonSourceURL") as? String,
+                       source.hasPrefix("https://"), let url = URL(string: source) {
+                        Link("This fork", destination: url)
+                    }
                 } header: {
                     Text("About")
                 } footer: {

@@ -10,12 +10,14 @@
 #              no --trust-native-code it only lists them: native mods aren't sandboxed, so building
 #              them is your decision
 #
-# Needs Xcode, xcodegen, rustup with the aarch64-apple-ios target, and the device paired with this
+# Needs ios/signing.env (ios/README.md, "Set up signing"), Xcode, xcodegen, rustup with the aarch64-apple-ios target, and the device paired with this
 # Mac (Xcode → Window → Devices and Simulators; tick "Connect via network" there for Wi-Fi installs).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 app_dir="$here/App"
 export PATH="/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
+# Your team and bundle ID (ios/signing.env).
+. "$here/signing.sh"
 
 launch=0
 native=0
@@ -89,6 +91,12 @@ if [ $native -eq 1 ]; then
     fi
 fi
 
+# This Mac's tailnet name, if Tailscale runs here: the app asks build-server.py there for builds
+# of its native mods when the phone is away from the Mac.
+tailscale=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+command -v tailscale >/dev/null 2>&1 && tailscale=$(command -v tailscale)
+build_host=$("$tailscale" status --json 2>/dev/null | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null || true)
+
 echo "==> Building ($configuration): the game library, then the app"
 cd "$app_dir"
 xcodegen --quiet
@@ -96,7 +104,7 @@ log="$app_dir/build.log"
 started=$(date +%s)
 if ! xcodebuild -project Horizon.xcodeproj -scheme Horizon -configuration "$configuration" \
     -destination "id=$udid" -allowProvisioningUpdates -derivedDataPath build \
-    CURRENT_PROJECT_VERSION="$(date +%y%m%d.%H%M)" build >"$log" 2>&1; then
+    CURRENT_PROJECT_VERSION="$(date +%y%m%d.%H%M)" HORIZON_BUILD_HOST="$build_host" build >"$log" 2>&1; then
     grep -E 'error:|warning: .*(provision|sign)' "$log" | sort -u | head -20 >&2
     echo "Build failed; the whole log is in $log" >&2
     exit 1
@@ -120,7 +128,7 @@ done
 if [ $launch -eq 1 ]; then
     echo "==> Opening Horizon"
     # A locked device keeps the launch waiting: give it 20 seconds.
-    xcrun devicectl device process launch --device "$udid" com.raymcdonald.horizon >/dev/null 2>&1 &
+    xcrun devicectl device process launch --device "$udid" "$HORIZON_IOS_BUNDLE_ID" >/dev/null 2>&1 &
     pid=$!
     waited=0
     while kill -0 "$pid" 2>/dev/null && [ $waited -lt 20 ]; do sleep 1; waited=$((waited + 1)); done

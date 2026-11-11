@@ -9,7 +9,7 @@
 	<key>CFBundleExecutable</key>
 	<string>Horizon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.raymcdonald.horizon</string>
+	<string>com.example.horizon</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

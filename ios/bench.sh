@@ -5,11 +5,13 @@
 # Usage: ios/bench.sh RD
 set -u
 rd=$1
-dev=${HORIZON_IOS_DEVICE:-00008150-000622400130401C}
+here=$(cd "$(dirname "$0")" && pwd)
+. "$here/signing.sh"
+dev=${HORIZON_IOS_DEVICE:?set HORIZON_IOS_DEVICE in ios/signing.env (xcrun devicectl list devices)}
 out="$(cd "$(dirname "$0")/.." && pwd)/.mc/dev-out/bench"
 mkdir -p "$out"
 log="$out/rd$rd.console.log"
-xcrun devicectl device process launch --console --terminate-existing --device "$dev" com.raymcdonald.horizon \
+xcrun devicectl device process launch --console --terminate-existing --device "$dev" "$HORIZON_IOS_BUNDLE_ID" \
     --resources resources --home . --game-dir . --benchmark standard --render-distance "$rd" > "$log" 2>&1 &
 launch=$!
 pid=""
@@ -28,5 +30,5 @@ kill -INT $trace 2>/dev/null; wait $trace
 kill $launch 2>/dev/null
 report=$(grep -o 'Documents/benchmarks/[^ ]*\.json' "$log" | tail -1)
 [ -n "$report" ] && xcrun devicectl device copy from --device "$dev" --domain-type appDataContainer \
-    --domain-identifier com.raymcdonald.horizon --source "$report" --destination "$out/rd$rd.json" >/dev/null 2>&1
+    --domain-identifier "$HORIZON_IOS_BUNDLE_ID" --source "$report" --destination "$out/rd$rd.json" >/dev/null 2>&1
 echo "rd$rd done (pid $pid): $(ls "$out" | grep "rd$rd" | tr '\n' ' ')"

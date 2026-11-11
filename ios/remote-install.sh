@@ -6,8 +6,10 @@
 # iOS installs it over the air (itms-services), keeping worlds and settings, with the same
 # entitlements as a cable install.
 #
-# Usage: ios/remote-install.sh [--stop]
-#   --stop   stop serving (the build stays in ios/build/remote)
+# Usage: ios/remote-install.sh [--stop] [--native-from FILE]
+#   --stop               stop serving (the build stays in ios/build/remote)
+#   --native-from FILE   first build the native mods of the instances in FILE (what the phone sent
+#                        build-server.py); the player trusted them by starting that server
 # Needs Tailscale running on the Mac and the phone (same tailnet) and HTTPS certificates turned on
 # for the tailnet (admin console → DNS → HTTPS Certificates).
 set -eu
@@ -17,6 +19,8 @@ out="$here/build/remote"
 tailscale=/Applications/Tailscale.app/Contents/MacOS/Tailscale
 command -v tailscale >/dev/null 2>&1 && tailscale=$(command -v tailscale)
 export PATH="/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
+# Your team and bundle ID (ios/signing.env).
+. "$here/signing.sh"
 
 port=8765
 pidfile="$here/build/remote-server.pid"
@@ -27,7 +31,19 @@ stop_server() {
     fi
 }
 
-if [ "${1:-}" = --stop ]; then
+native_from=""
+stop=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --stop) stop=1 ;;
+        --native-from) native_from=$2; shift ;;
+        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+        *) echo "unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+if [ $stop -eq 1 ]; then
     "$tailscale" serve --https=443 --set-path /horizon off 2>/dev/null || true
     stop_server
     echo "Stopped serving Horizon."
@@ -46,13 +62,20 @@ case " $certs " in
         exit 1 ;;
 esac
 
+if [ -n "$native_from" ]; then
+    echo "==> Native mods the phone's instances chose"
+    if ! python3 "$here/native-build.py" --instances "$native_from" --trust-native-code; then
+        echo "Native mods didn't all build; the app is built with what did." >&2
+    fi
+fi
+
 echo "==> Building the app"
 cd "$app_dir"
 xcodegen --quiet
 log="$app_dir/build.log"
 if ! xcodebuild -project Horizon.xcodeproj -scheme Horizon -configuration Release \
     -destination 'generic/platform=iOS' -allowProvisioningUpdates -derivedDataPath build \
-    CURRENT_PROJECT_VERSION="$(date +%y%m%d.%H%M)" build >"$log" 2>&1; then
+    CURRENT_PROJECT_VERSION="$(date +%y%m%d.%H%M)" HORIZON_BUILD_HOST="$host" build >"$log" 2>&1; then
     grep -E 'error:' "$log" | sort -u | head -20 >&2
     echo "Build failed; the whole log is in $log" >&2
     exit 1

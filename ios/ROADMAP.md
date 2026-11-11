@@ -1,6 +1,6 @@
 # Horizon for iOS: self-contained launcher roadmap
 
-Fork: `Raymon82777/horizon-ios`, long-lived branch **`ios-main`** (built on the spike in `IOS_SPIKE.md` (in this folder)). Upstream-able platform fixes go out as small PRs (`pr-drafts/`); iOS-only pieces live here.
+Fork of horizon-rust/horizon, long-lived branch **`ios-main`** (built on the spike in `IOS_SPIKE.md` (in this folder)). Upstream-able platform fixes go out as small PRs (`pr-drafts/`); iOS-only pieces live here.
 
 **Goal:** one iPhone/iPad app. Sign in with Microsoft, download Minecraft 26.3 for an account that owns it, assemble Horizon's resources on the device, and play. No computer, no JVM, no JIT.
 
@@ -32,7 +32,7 @@ Resources
 - [x] Lifecycle: winit sends `Focused` on resign / become active (the game pauses, `pauseOnLostFocus`); the world saves when the app enters the background (`Occluded(true)`), so closing it from the app switcher keeps everything
 
 ### M2: Microsoft sign-in
-- [ ] **Ray:** register an Azure app (personal Microsoft account, public client, redirect `horizon-ios://auth`), then **ask Mojang to approve the app ID for the Minecraft services API**. New app IDs get 403 from `api.minecraftservices.com` until approved, and upstream forbids borrowing another launcher's ID.
+- [ ] **Fork owner:** register an Azure app (personal Microsoft account, public client, redirect `horizon-ios://auth`), then **ask Mojang to approve the app ID for the Minecraft services API**. New app IDs get 403 from `api.minecraftservices.com` until approved, and upstream forbids borrowing another launcher's ID.
 - [x] Swift (`ios/App/Sources/Auth/`): ASWebAuthenticationSession (auth code + PKCE), XBL → XSTS → `login_with_xbox`, entitlement check, profile; tokens in the Keychain; several accounts; renewal and owner check at every Play. Until the fork's own Azure app is approved, signs in on the legacy live.com path with the official launcher's ID, as Amethyst does (temporary; `ios/SIGN_IN_SETUP.md`). Tested on the iPhone: sign-in, an online-mode server, skins
 - [x] Hand the session to the game the way the desktop launcher does (`--session-file`, 0600 in Caches, read once and deleted)
 

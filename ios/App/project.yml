@@ -1,12 +1,12 @@
 name: Horizon
 options:
-  bundleIdPrefix: com.raymcdonald
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
 settings:
   base:
-    DEVELOPMENT_TEAM: BFH3MLCK9L
+    # From ios/signing.env (ios/signing.sh exports them before xcodegen runs).
+    DEVELOPMENT_TEAM: ${HORIZON_IOS_TEAM}
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.0"
 targets:
@@ -47,9 +47,11 @@ targets:
         basedOnDependencyAnalysis: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.raymcdonald.horizon
+        PRODUCT_BUNDLE_IDENTIFIER: ${HORIZON_IOS_BUNDLE_ID}
         PRODUCT_NAME: Horizon
-        CODE_SIGN_ENTITLEMENTS: ../Horizon.entitlements
+        # The memory entitlements with a paid account, none with a free one (HORIZON_IOS_PAID).
+        CODE_SIGN_ENTITLEMENTS: ${HORIZON_IOS_ENTITLEMENTS}
+        HORIZON_SOURCE_URL: ${HORIZON_SOURCE_URL}
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Horizon-Bridging-Header.h
         LIBRARY_SEARCH_PATHS: $(SRCROOT)/../../target/aarch64-apple-ios/release
         # iOS gives the main thread 1 MiB; the game runs on it (winit) and needs more.

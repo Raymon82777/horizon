@@ -5,7 +5,7 @@ import Foundation
 enum AuthConfig {
     static let clientID = ""
 
-    /// TEMPORARY, Ray's choice until his own app is approved by Mojang: with no client ID of
+    /// TEMPORARY, until the fork's own app is approved by Mojang: with no client ID of
     /// our own, sign in as Amethyst and PojavLauncher do, with the official Minecraft
     /// Launcher's legacy ID on login.live.com. It's Mojang's ID, not ours: Microsoft can block
     /// it at any time, and builds that use it mustn't be shared. Setting `clientID` above

@@ -5,6 +5,7 @@ set -eu
 dylib=$1
 name=$2
 here=$(cd "$(dirname "$0")" && pwd)
+. "$here/signing.sh"
 out="$here/build/frameworks/$name.framework"
 
 rm -rf "$out"
@@ -22,7 +23,7 @@ cat > "$out/Info.plist" <<EOF
 	<key>CFBundleExecutable</key>
 	<string>$name</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.raymcdonald.horizon.$id</string>
+	<string>$HORIZON_IOS_BUNDLE_ID.$id</string>
 	<key>CFBundleName</key>
 	<string>$name</string>
 	<key>CFBundlePackageType</key>

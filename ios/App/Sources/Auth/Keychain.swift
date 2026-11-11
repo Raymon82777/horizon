@@ -4,7 +4,8 @@ import Security
 /// One Keychain item per account (service + Minecraft UUID), readable only on this device while
 /// it's unlocked once since boot. Tokens never go to UserDefaults, files or logs.
 enum Keychain {
-    static let service = "com.raymcdonald.horizon.accounts"
+    /// "<bundle ID>.accounts": each build of the fork keeps its own accounts.
+    static let service = (Bundle.main.bundleIdentifier ?? "horizon") + ".accounts"
 
     static func save(_ data: Data, account: String) throws {
         let query: [String: Any] = [
