@@ -31,8 +31,11 @@ const STILL: f32 = 0.025;
 /// One finger and what it does.
 #[derive(Clone, Copy)]
 enum Role {
-    /// Out of play: the mouse pointer, left button held.
-    Pointer,
+    /// Out of play: the mouse pointer. The left button goes down once the finger moves (a
+    /// drag) or lifts (a tap), so a second finger landing first can make it a scroll instead.
+    Pointer { start: [f32; 2], pressed: bool },
+    /// Out of play: two fingers dragging scroll what's under them, as a mouse wheel.
+    Scroll,
     /// The joystick, from where the finger landed (pixels).
     Joystick { origin: [f32; 2] },
     /// Turning the view; a tap uses, a still hold attacks.
@@ -57,7 +60,13 @@ struct State {
     sneaking: bool,
     /// Bound actions the touch controls hold (`input_holds`).
     held: Vec<&'static str>,
+    /// The scrolling fingers' midpoint last time (pixels).
+    scroll_from: Option<[f32; 2]>,
 }
+
+/// Where the game folder keeps the touch layout the launcher's editor writes
+/// (`horizon_client_render::touch::layout::Settings` as JSON; the game runs in that folder).
+const LAYOUT_FILE: &str = "touch-controls.json";
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
@@ -67,7 +76,7 @@ fn with<T>(f: impl FnOnce(&mut State) -> T) -> T {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         if s.settings.is_none() {
-            s.settings = Some(layout::Settings::default());
+            s.settings = Some(layout::Settings::load(std::path::Path::new(LAYOUT_FILE)));
         }
         f(&mut s)
     })
@@ -154,6 +163,46 @@ impl Game<'_> {
         }
     }
 
+    /// A mouse wheel turn of `dy` pixels (positive: up), the pointer at `at`.
+    fn touch_wheel(&mut self, event_loop: &dyn EventLoopCtl, at: [f32; 2], dy: f32) {
+        let Some(id) = self.window.as_ref().map(|w| w.id()) else {
+            return;
+        };
+        self.touch_pointer(event_loop, at, None);
+        self.handle_window_event(
+            event_loop,
+            id,
+            WindowEvent::MouseWheel {
+                device_id: winit::event::DeviceId::dummy(),
+                delta: winit::event::MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                    0.0,
+                    f64::from(dy),
+                )),
+                phase: TouchPhase::Moved,
+            },
+            input_trace::InputOrigin::User,
+        );
+    }
+
+    /// The scrolling fingers' midpoint.
+    fn touch_scroll_mid() -> Option<[f32; 2]> {
+        with(|s| {
+            let points: Vec<[f32; 2]> = s
+                .fingers
+                .iter()
+                .filter(|f| matches!(f.1, Role::Scroll))
+                .map(|f| f.2)
+                .collect();
+            (!points.is_empty()).then(|| {
+                let n = points.len() as f32;
+                [
+                    points.iter().map(|p| p[0]).sum::<f32>() / n,
+                    points.iter().map(|p| p[1]).sum::<f32>() / n,
+                ]
+            })
+        })
+    }
+
     /// The layout button under `at` (surface pixels), if one shows there.
     fn touch_button_at(&self, at: [f32; 2], size: [f32; 2]) -> Option<Control> {
         let point = [at[0] / size[0], at[1] / size[1]];
@@ -202,11 +251,30 @@ impl Game<'_> {
             window.set_ime_allowed(true);
         }
         let role = if !self.touch_playing() {
-            if roles.iter().any(|r| matches!(r, Role::Pointer)) {
+            if roles
+                .iter()
+                .any(|r| matches!(r, Role::Pointer { pressed: false, .. }))
+            {
+                // A second finger before the first did anything: the two scroll.
+                with(|s| {
+                    for f in &mut s.fingers {
+                        if matches!(f.1, Role::Pointer { .. }) {
+                            f.1 = Role::Scroll;
+                        }
+                    }
+                });
+                Role::Scroll
+            } else if roles
+                .iter()
+                .any(|r| matches!(r, Role::Pointer { .. } | Role::Scroll))
+            {
                 Role::Ignored
             } else {
-                self.touch_pointer(event_loop, at, Some(true));
-                Role::Pointer
+                self.touch_pointer(event_loop, at, None);
+                Role::Pointer {
+                    start: at,
+                    pressed: false,
+                }
             }
         } else {
             if !self.captured && self.focused {
@@ -248,6 +316,10 @@ impl Game<'_> {
             }
         };
         with(|s| s.fingers.push((id, role, at)));
+        if matches!(role, Role::Scroll) {
+            let mid = Self::touch_scroll_mid();
+            with(|s| s.scroll_from = mid);
+        }
     }
 
     fn touch_moved(
@@ -265,7 +337,34 @@ impl Game<'_> {
             return;
         };
         match role {
-            Role::Pointer => self.touch_pointer(event_loop, at, None),
+            Role::Pointer {
+                start,
+                pressed: false,
+            } => {
+                if (at[0] - start[0]).hypot(at[1] - start[1]) / size[1] > STILL {
+                    // A drag: the button goes down where the finger landed.
+                    self.touch_pointer(event_loop, start, Some(true));
+                    self.touch_pointer(event_loop, at, None);
+                    with(|s| {
+                        if let Some(f) = s.fingers.iter_mut().find(|f| f.0 == id) {
+                            f.1 = Role::Pointer {
+                                start,
+                                pressed: true,
+                            };
+                        }
+                    });
+                }
+            }
+            Role::Pointer { pressed: true, .. } => self.touch_pointer(event_loop, at, None),
+            Role::Scroll => {
+                let (Some(mid), Some(from)) = (Self::touch_scroll_mid(), with(|s| s.scroll_from))
+                else {
+                    return;
+                };
+                with(|s| s.scroll_from = Some(mid));
+                // Natural scrolling: the list follows the fingers.
+                self.touch_wheel(event_loop, mid, mid[1] - from[1]);
+            }
             Role::Look {
                 start,
                 last,
@@ -304,7 +403,21 @@ impl Game<'_> {
             return;
         };
         match role {
-            Role::Pointer => self.touch_pointer(event_loop, at, Some(false)),
+            Role::Pointer {
+                start,
+                pressed: false,
+            } => {
+                // A tap: a click where the finger landed.
+                if ended {
+                    self.touch_pointer(event_loop, start, Some(true));
+                    self.touch_pointer(event_loop, start, Some(false));
+                }
+            }
+            Role::Pointer { pressed: true, .. } => self.touch_pointer(event_loop, at, Some(false)),
+            Role::Scroll => {
+                let mid = Self::touch_scroll_mid();
+                with(|s| s.scroll_from = mid);
+            }
             Role::Look {
                 start,
                 drift,

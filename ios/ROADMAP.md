@@ -51,7 +51,8 @@ Resources
 ### M5: play on a phone
 - [x] Touch (`crates/horizon-client/src/game/touch_input.rs`): upstream's touch layout and aim helpers, driven through the pad's paths (`input_move`, `input_look`, `pad_action`). Joystick, drag to look, tap to use, hold to mine, layout buttons, hotbar taps; a finger is the mouse in menus
 - [x] On-screen keyboard bar (winit): Esc and Hide over the keyboard, Return as Enter
-- [ ] Two-finger scroll in lists; a layout editor (move and resize buttons); touch settings saved to a file
+- [x] Two-finger scroll in menus (a mouse wheel); taps click on lift, drags press on first move
+- [x] Touch layout editor in the launcher (Settings → Edit touch layout): move, resize, opacity, look speed; saved as `touch-controls.json` in the game's own layout format, which the game loads at start
 - [ ] GameController (`GCController`) and Bluetooth keyboard and mouse (`GCMouse`, pointer lock)
 - [ ] Phone defaults: GUI scale, resolution scale, SDR versus HDR, 120 Hz pacing, battery mode; safe areas
 

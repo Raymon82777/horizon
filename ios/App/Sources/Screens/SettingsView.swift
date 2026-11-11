@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var installer: Installer
     @State private var usage: [(String, Int64)] = []
     @State private var rebuilding = false
+    @State private var editingTouch = false
 
     var body: some View {
         NavigationStack {
@@ -16,6 +17,13 @@ struct SettingsView: View {
                         Button("Add another account", systemImage: "person.badge.plus") { accounts.signIn() }
                             .disabled(!AuthConfig.configured || accounts.busy)
                     }
+                }
+                Section {
+                    Button("Edit touch layout", systemImage: "hand.tap") { editingTouch = true }
+                } header: {
+                    Text("Controls")
+                } footer: {
+                    Text("Move and resize the on-screen buttons, and set the look speed. The game picks it up the next time you press Play.")
                 }
                 Section {
                     LabeledContent("Minecraft", value: "Java Edition 26.3")
@@ -45,6 +53,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
         }
         .onAppear(perform: measure)
+        .fullScreenCover(isPresented: $editingTouch) { TouchLayoutEditor() }
         .confirmationDialog("Rebuild the game's resources?", isPresented: $rebuilding, titleVisibility: .visible) {
             Button("Rebuild") { installer.rebuild() }
         }
