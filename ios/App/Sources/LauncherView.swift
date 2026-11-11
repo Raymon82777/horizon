@@ -7,8 +7,8 @@ struct LauncherView: View {
     @AppStorage("seed") private var seed = ""
     @AppStorage("renderDistance") private var renderDistance = 8.0
     @AppStorage("creative") private var creative = true
-    @StateObject private var installer = Installer()
-    @StateObject private var accounts = Accounts()
+    @ObservedObject var installer: Installer
+    @ObservedObject var accounts: Accounts
     @State private var launching = false
 
     var body: some View {

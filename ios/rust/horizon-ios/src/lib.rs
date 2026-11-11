@@ -88,3 +88,24 @@ pub unsafe extern "C" fn horizon_ios_free_string(text: *mut c_char) {
         drop(unsafe { CString::from_raw(text) });
     }
 }
+
+/// Unpacks the zip archive `archive` into the folder `out` (made if missing), for the
+/// launcher's world import: iOS has no public unzip API. Entries that would land outside `out`
+/// are refused. Null when done, else an error to free with [`horizon_ios_free_string`].
+///
+/// # Safety
+/// Both paths are valid NUL-terminated UTF-8 strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_unzip(archive: *const c_char, out: *const c_char) -> *mut c_char {
+    // SAFETY: the caller passes valid C strings.
+    let path = |p: *const c_char| unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned();
+    let (archive, out) = (path(archive), path(out));
+    let result = std::fs::File::open(&archive)
+        .map_err(|e| format!("{archive}: {e}"))
+        .and_then(|file| zip::ZipArchive::new(file).map_err(|e| format!("{archive}: {e}")))
+        .and_then(|mut zip| zip.extract(&out).map_err(|e| format!("{archive}: {e}")));
+    match result {
+        Ok(()) => std::ptr::null_mut(),
+        Err(e) => CString::new(e).map_or(std::ptr::null_mut(), CString::into_raw),
+    }
+}

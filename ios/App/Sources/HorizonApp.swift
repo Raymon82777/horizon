@@ -4,7 +4,7 @@ import SwiftUI
 struct HorizonApp: App {
     var body: some Scene {
         WindowGroup {
-            LauncherView()
+            RootView()
                 .preferredColorScheme(.dark)
                 .statusBarHidden()
         }

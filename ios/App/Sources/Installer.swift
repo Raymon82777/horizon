@@ -38,6 +38,13 @@ final class Installer: ObservableObject {
         }
     }
 
+    /// Rebuild from scratch: the old resources go first (assemble renames its new tree into place).
+    func rebuild() {
+        try? FileManager.default.removeItem(at: resourcesDir)
+        refresh()
+        if state == .canAssemble { assemble() }
+    }
+
     func assemble() {
         guard let facts = factsPack else { return }
         state = .assembling(0)

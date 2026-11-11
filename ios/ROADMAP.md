@@ -57,8 +57,8 @@ Resources
 
 ### M6: polish
 - [ ] UIPasteboard clipboard, AVSpeechSynthesizer narrator
-- [ ] Files-app import and export of worlds and resource packs
-- [ ] Crash reports surfaced in the launcher; app icon; TestFlight-style build script
+- [x] Launcher tabs (`ios/App/Sources/Screens/`): Worlds (play, new, rename, duplicate, delete, zip import and export), Packs & mods (resource packs, shader packs, `.hmod` import and delete), Logs (latest log, crash reports), Settings (accounts, rebuild resources, storage, about)
+- [ ] App icon; TestFlight-style build script
 
 ## Known platform constraints
 - No JIT: Horizon's wasm mods need an interpreter runtime on iOS (out of scope for now).

@@ -1736,6 +1736,7 @@ dependencies = [
  "horizon-facts",
  "horizon-mods",
  "horizon-threads",
+ "zip",
 ]
 
 [[package]]

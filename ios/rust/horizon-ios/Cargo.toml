@@ -14,6 +14,8 @@ horizon-client = { path = "../../../crates/horizon-client" }
 horizon-threads = { path = "../../../crates/horizon-threads" }
 # Resources without Java (horizon-facts): assemble on the device.
 horizon-facts = { path = "../horizon-facts" }
+# World import (horizon_ios_unzip).
+zip = { version = "9.1.3", default-features = false, features = ["deflate"] }
 horizon-mods = { path = "../../../crates/horizon-mods", default-features = false, features = ["index"] }
 
 [lints]
