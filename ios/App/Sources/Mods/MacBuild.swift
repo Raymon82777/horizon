@@ -13,6 +13,7 @@ final class MacBuild: ObservableObject {
         var step: String?
         var log: [String]?
         var install: String?
+        var warning: String?
         var error: String?
         var started: Double?
         var finished: Double?

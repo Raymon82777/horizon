@@ -92,11 +92,12 @@ struct NativeModsView: View {
             Text("Your Mac builds every instance's native mods into a new copy of the app, then you install it from Safari. Native mods aren't sandboxed: build only mods you trust.")
         }
         .task(id: mac.building) {
-            // Follows a build while this page is open: one look, then every 5 seconds while it runs.
+            // Follows the Mac while this page is open: every 5 seconds while a build runs, every
+            // 30 otherwise, so a build started elsewhere (the Mac, another device) shows up too.
             guard MacBuild.base != nil else { return }
             await mac.refresh()
-            while mac.building, !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(mac.building ? 5 : 30))
                 await mac.refresh()
             }
         }
@@ -120,6 +121,10 @@ struct NativeModsView: View {
                         Text(last).font(.caption2.monospaced()).foregroundStyle(.tertiary).lineLimit(2)
                     }
                 case "done"?:
+                    if let warning = mac.status?.warning {
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
                     if let install = mac.status?.install.flatMap(URL.init(string:)) {
                         Button("Install the new build", systemImage: "arrow.down.app") { openURL(install) }
                     }

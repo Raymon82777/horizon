@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -138,11 +139,44 @@ def mixins_tool(rev):
 
 
 def stage_source():
-    """This fork's source, copied without build output; unchanged files keep their times."""
+    """This fork's source, copied without build output; unchanged files keep their times.
+    Symbolic links stay out (--no-links): horizon-mixins refuses them, and the build needs none
+    (the repository's only one is CLAUDE.md)."""
     source = WORK / "source"
     excludes = [f"--exclude=/{e}" for e in STAGE_EXCLUDES]
-    run(["rsync", "-a", "--delete", *excludes, f"{ROOT}/", f"{source}/"])
+    run(["rsync", "-a", "--no-links", "--delete", *excludes, f"{ROOT}/", f"{source}/"])
     return source
+
+
+HOOKS_LINE = re.compile(r"^pub\(crate\) const NATIVE_HOOKS_API: u32 = (\d+);", re.M)
+NAMED_HOOK = re.compile(r'^hook = "([^"]+)"\s*\nhook_version = (\d+)', re.M)
+PIN = re.compile(r'^(horizon_revision\s*=\s*)"[0-9a-f]{40}"', re.M)
+
+
+def hook_points(source):
+    """This source's native hook points: their version (NATIVE_HOOKS_API) and the named ones
+    (native-hooks.json), as the desktop launcher reads them (launcher/src/native_mods.rs)."""
+    text = (source / "crates/horizon-client/src/game/native_hooks.rs").read_text()
+    found = HOOKS_LINE.search(text)
+    catalog = json.loads((source / "native-hooks.json").read_text())["hooks"]
+    return (int(found.group(1)) if found else None), {(h["name"], h["version"]) for h in catalog}
+
+
+def repin(bundle_dir, mod, source):
+    """A mod that names its hook points' version builds on any Horizon that has them, as the
+    launcher's repin does: its exact horizon_revision (which horizon-mixins checks) becomes this
+    source's commit when the source has the version and every named hook point it injects at."""
+    if mod.get("hooks") is None:
+        return
+    manifest = bundle_dir / "horizon-mixin.toml"
+    text = manifest.read_text()
+    version, catalog = hook_points(source)
+    named = {(n, int(v)) for n, v in NAMED_HOOK.findall(text)}
+    if version is None or version < int(mod["hooks"]) or not named <= catalog:
+        return
+    revision = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], check=True,
+                              capture_output=True, text=True).stdout.strip()
+    manifest.write_text(PIN.sub(lambda m: f'{m.group(1)}"{revision}"', text, count=1))
 
 
 def apply(tool, source, bundles, out):
@@ -151,9 +185,21 @@ def apply(tool, source, bundles, out):
     mods.mkdir(parents=True)
     for b in bundles:
         shutil.copytree(b["bundle"], mods / b["id"])
+        repin(mods / b["id"], b, source)
     shutil.rmtree(out, ignore_errors=True)
     return subprocess.run([str(tool), "apply", "--workspace", str(source), "--mods", str(mods), "--out", str(out)],
                           capture_output=True, text=True)
+
+
+def apply_error(result):
+    """horizon-mixins' reason, from its JSON error ({"code", "message", "file"}) when it gives one."""
+    text = (result.stderr or result.stdout or "").strip()
+    try:
+        err = json.loads(text[text.index("{"):])
+        where = f" ({Path(err['file']).name})" if err.get("file") else ""
+        return f"{err.get('message') or err.get('code')}{where}"
+    except (ValueError, KeyError, TypeError):
+        return (text.splitlines() or ["?"])[-1]
 
 
 def build_set(name, choices, index, trust):
@@ -174,7 +220,7 @@ def build_set(name, choices, index, trust):
             if alone.returncode == 0:
                 fits.append(m)
             else:
-                left_out.append((m, (alone.stderr or alone.stdout).strip().splitlines()[-1:] or ["?"]))
+                left_out.append((m, [apply_error(alone)]))
         if not fits:
             raise RuntimeError("None of these mods apply to this Horizon:\n" +
                                "\n".join(f"  {m['id']}: {why[0]}" for m, why in left_out))

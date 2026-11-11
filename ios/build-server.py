@@ -39,6 +39,8 @@ MAX_BODY = 256 * 1024
 MOD_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+# native-build.py's lines for a mod that didn't build: "  id: why" and "   left out id: why".
+FAILED_MOD = re.compile(r"^ {2,3}(left out )?[a-z0-9][a-z0-9_-]*: ")
 
 
 def tailscale():
@@ -95,6 +97,10 @@ class Builds:
             steps = [l[4:] for l in lines if l.startswith("==> ")]
             if steps:
                 state["step"] = steps[-1]
+            if any(l.startswith("Native mods didn't all build") for l in lines):
+                # remote-install.sh builds the app with what did: the phone says what didn't.
+                why = [l.strip().removeprefix("left out ") for l in lines if FAILED_MOD.match(l)]
+                state["warning"] = "Some native mods didn't build: " + ("; ".join(why[:4]) or "see the log")
         return state
 
     def start(self, instances):
