@@ -63,6 +63,13 @@ Resources
 - [x] Play tab: seed and mode only for a new world
 - [x] `ios/install.sh`: one command builds the Rust library and the app and installs it (cable or Wi-Fi)
 
+### M7: a full launcher
+- [x] Instances (`Instances.swift`): each its own game folder (worlds, options, packs, shaders, mods, servers, logs); all share the Minecraft files and resources. The old setup is "Default", in place. Create (optionally copying options and servers), edit, duplicate, export and import as a zip, delete
+- [x] Each instance's page: Worlds, Mods, Resource packs, Shaders, Logs. Tabs: Play, Instances, Settings
+- [x] Mod manager on Horizon's registry (`Mods/ModRegistry.swift`): browse, search, install with the registry's own checks (`horizon_ios_mod_check`: size, SHA-256, signature, manifest), on/off in `horizon-mods.txt`, updates, take-downs turned off. Content mods (data only), shaders, resource packs; native and code mods can't run on iOS
+- [x] Play opens the title screen; a world's own Play button quick-plays it
+- [ ] Native mods: build chosen ones into the app on the Mac (`install.sh`), as the desktop launcher builds them into the game
+
 ## Known platform constraints
 - No JIT: Horizon's wasm mods need an interpreter runtime on iOS (out of scope for now).
 - No subprocesses: dedicated server, "open folder", anything that runs `Command` gets stubbed or replaced.

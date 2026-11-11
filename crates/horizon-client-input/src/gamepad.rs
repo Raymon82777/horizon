@@ -256,6 +256,7 @@ pub const HOTBAR_NEXT: &str = "pad.hotbarNext";
 /// Held, opens the radial menu (`radial.rs`).
 pub const RADIAL: &str = "pad.radial";
 
+pub mod platform;
 mod radial_file;
 pub use radial_file::{RadialMode, RadialStick, opener_refused};
 

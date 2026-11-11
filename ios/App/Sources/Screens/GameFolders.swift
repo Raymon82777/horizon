@@ -4,7 +4,11 @@ import UniformTypeIdentifiers
 /// The game folder (`--game-dir .`, the app's Documents, shown in the Files app) and the
 /// folders in it the launcher manages.
 enum GameFolders {
-    static var root: URL { GameBridge.documents }
+    /// The selected instance's folder (Instances keeps "instanceFolder" up to date).
+    static var root: URL {
+        let folder = UserDefaults.standard.string(forKey: "instanceFolder") ?? ""
+        return folder.isEmpty ? GameBridge.documents : GameBridge.documents.appendingPathComponent(folder, isDirectory: true)
+    }
     static var saves: URL { root.appendingPathComponent("saves", isDirectory: true) }
     static var resourcePacks: URL { root.appendingPathComponent("resourcepacks", isDirectory: true) }
     static var shaderPacks: URL { root.appendingPathComponent("shaderpacks", isDirectory: true) }

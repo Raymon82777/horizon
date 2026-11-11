@@ -1,21 +1,14 @@
 import SwiftUI
 
-/// The launcher: the game's resources (assembled on the device), world settings, and Play.
-/// Signs in with Microsoft (Accounts); downloading the game comes next (ios/ROADMAP.md).
+/// The launcher's Play tab: the game's files, the account, the selected instance, and Play
 struct LauncherView: View {
-    @AppStorage("world") private var world = "New World"
-    @AppStorage("seed") private var seed = ""
-    @AppStorage("renderDistance") private var renderDistance = 8.0
-    @AppStorage("creative") private var creative = true
+    @EnvironmentObject private var instances: Instances
     @ObservedObject var installer: Installer
     @ObservedObject var accounts: Accounts
     @State private var launching = false
     @AppStorage("tab") private var tab = Tab.play
-
-    private var worldExists: Bool {
-        FileManager.default.fileExists(
-            atPath: GameFolders.saves.appendingPathComponent(world).appendingPathComponent("level.dat").path)
-    }
+    /// A world's own Play button (on an instance's Worlds) asks for it here: straight into it.
+    @AppStorage("quickPlay") private var quickPlay = ""
 
     var body: some View {
         HStack(spacing: 32) {
@@ -32,41 +25,35 @@ struct LauncherView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 14) {
-                if worldExists {
-                    HStack {
+                Button { tab = .instances } label: {
+                    HStack(spacing: 12) {
+                        InstanceIcon(instance: instances.current, size: 40)
                         VStack(alignment: .leading) {
-                            Text("World").font(.caption).foregroundStyle(.secondary)
-                            Text(world).font(.headline)
+                            Text("Instance").font(.caption).foregroundStyle(.secondary)
+                            Text(instances.current.name).font(.headline).foregroundStyle(.primary)
                         }
                         Spacer()
-                        Button("Change") { tab = .worlds }
+                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
                     }
-                } else {
-                    // A new world: its name, seed and mode apply once, when it's generated.
-                    TextField("New world name", text: $world)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Seed (optional)", text: $seed)
-                        .textFieldStyle(.roundedBorder)
-                    Toggle("Creative", isOn: $creative)
                 }
-                VStack(alignment: .leading) {
-                    Text("Render distance: \(Int(renderDistance)) chunks")
-                    Slider(value: $renderDistance, in: 2...32, step: 1)
-                }
-                Button(action: play) {
-                    Text(worldExists ? "Play" : "Create & play")
+                .buttonStyle(.plain)
+                Text("Opens the title screen: pick a world in Singleplayer, or join a server in Multiplayer. The game's own Options set render distance and everything else for this instance.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button { play() } label: {
+                    Text("Play")
                         .font(.title2.bold())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(installer.state != .ready || launching || accounts.busy
-                          || world.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(installer.state != .ready || launching || accounts.busy)
             }
             .frame(width: 320)
         }
         .padding(32)
         .onAppear { installer.refresh() }
+        .onAppear(perform: quickPlayIfAsked)
+        .onChange(of: quickPlay) { quickPlayIfAsked() }
     }
 
     @ViewBuilder private var status: some View {
@@ -110,7 +97,10 @@ struct LauncherView: View {
         case .failed(let message):
             Label("Couldn't build resources", systemImage: "xmark.octagon.fill")
                 .foregroundStyle(.red)
+            // All of it, wrapped and selectable: the part that says why is often past a long path.
             Text(message).font(.footnote).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
             Button("Try again") { installer.refresh() }
         }
     }
@@ -129,13 +119,23 @@ struct LauncherView: View {
         }
     }
 
-    private func play() {
-        var args = ["--resources", "resources", "--home", ".", "--game-dir", ".",
-                    "--world", world, "--render-distance", String(Int(renderDistance))]
-        if !worldExists {
-            if !seed.isEmpty { args += ["--seed", seed] }
-            if creative { args.append("--creative") }
-        }
+    private func quickPlayIfAsked() {
+        guard !quickPlay.isEmpty else { return }
+        let world = quickPlay
+        quickPlay = ""
+        if installer.state == .ready, !launching { play(world: world) }
+    }
+
+    /// The title screen, or with `world` straight into that world (vanilla's quick play: only a
+    /// world that exists).
+    private func play(world: String? = nil) {
+        // The instance's own folder; the resources are everyone's.
+        let instance = instances.current
+        var args = ["--resources", installer.resourcesDir.path,
+                    "--home", instance.url.path, "--game-dir", instance.url.path]
+        if let world { args += ["--quickPlaySingleplayer", world] }
+        try? FileManager.default.createDirectory(at: instance.url, withIntermediateDirectories: true)
+        instances.markPlayed()
         guard let account = accounts.current else {
             GameBridge.run(arguments: args)
             return

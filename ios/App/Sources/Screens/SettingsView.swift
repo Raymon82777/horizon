@@ -86,14 +86,13 @@ struct SettingsView: View {
     private func measure() {
         DispatchQueue.global(qos: .utility).async {
             let folders: [(String, URL)] = [
-                ("Worlds", GameFolders.saves),
-                ("Minecraft files", GameFolders.root.appendingPathComponent("minecraft")),
-                ("Game resources", GameFolders.root.appendingPathComponent("resources")),
-                ("Packs and mods", GameFolders.resourcePacks),
-                ("Logs", GameFolders.logs),
+                ("Default instance's worlds", GameBridge.documents.appendingPathComponent("saves")),
+                ("Other instances", GameBridge.documents.appendingPathComponent("instances")),
+                ("Minecraft files", GameBridge.documents.appendingPathComponent("minecraft")),
+                ("Game resources", GameBridge.documents.appendingPathComponent("resources")),
+
             ]
-            var result = folders.map { ($0.0, GameFolders.size($0.1)) }
-            result[3].1 += GameFolders.size(GameFolders.shaderPacks) + GameFolders.size(GameFolders.mods)
+            let result = folders.map { ($0.0, GameFolders.size($0.1)) }
             DispatchQueue.main.async { usage = result }
         }
     }

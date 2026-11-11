@@ -259,6 +259,33 @@ mod hardware {
 }
 
 impl Pads {
+    /// The game's own reader, with the platform's controller on top: on iOS, the pad Apple's
+    /// GameController framework reads (`gamepad::platform`), which gilrs can't reach there.
+    fn read_with_platform(&mut self) -> PadState {
+        let own = self.read();
+        for change in gamepad::platform::take_changes() {
+            self.connections.push(match change {
+                gamepad::platform::Change::Connected { style, .. } => Connection::Connected(style),
+                gamepad::platform::Change::Disconnected => {
+                    Connection::Disconnected { active: true }
+                }
+            });
+        }
+        let Some(pad) = gamepad::platform::read() else {
+            return own;
+        };
+        // No pad of the game's own reader playing: the platform's shows its glyphs.
+        if self.device.is_none() || own == PadState::default() {
+            self.style = pad.style;
+            self.device = Some(Device {
+                name: pad.name,
+                vendor: None,
+                product: None,
+            });
+        }
+        own.merge(&pad.state)
+    }
+
     /// The digital buttons the person's pad changed since the last poll.
     pub(super) fn hardware_edges(&mut self, hardware: PadState) -> Vec<(Button, bool)> {
         let edges = Button::ALL
@@ -396,7 +423,7 @@ impl Game<'_> {
             // held again after it.
             _ if self.scripted_run() => PadState::default(),
             Some(state) => state,
-            None => self.pad.read(),
+            None => self.pad.read_with_platform(),
         };
         // A Nintendo pad going by its letters is read that way: its own, or the one
         // splitscreen's router feeds this player.

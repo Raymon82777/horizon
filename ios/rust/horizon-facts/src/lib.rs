@@ -281,16 +281,8 @@ pub fn assemble(
         ));
     }
     drop(jar_bytes);
-    let index = field("asset_index")?;
-    let index_path = sources.assets.join("indexes").join(format!("{index}.json"));
-    let index_bytes =
-        fs::read(&index_path).map_err(|e| format!("{}: {e}", index_path.display()))?;
-    if sha1_hex(&index_bytes) != field("asset_index_sha1")? {
-        return Err(format!(
-            "{}: not the pinned asset index",
-            index_path.display()
-        ));
-    }
+    // The asset index itself isn't checked: Mojang updates an index in place (index 34 gained
+    // entries after 26.3 shipped), and every asset below is checked by its own SHA-256.
     let files = manifest
         .get("files")
         .and_then(Value::as_array)
@@ -320,7 +312,12 @@ pub fn assemble(
             "asset" => {
                 let hash = get("hash")?;
                 let path = object_path(sources.assets, hash);
-                fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?
+                fs::read(&path).map_err(|e| {
+                    format!(
+                        "{relative} is missing from Minecraft's assets ({e}): check and repair \
+                         the game files in Settings, then try again"
+                    )
+                })?
             }
             "facts" => zip_bytes(&mut pack, &format!("{FACTS_DIR}{relative}"))?,
             other => return Err(format!("{MANIFEST}: unknown source {other}")),
@@ -507,6 +504,34 @@ mod tests {
         };
         assert!(assemble(&sources, &root.join("refused"), &|_, _| {}).is_err());
         assert!(!root.join("refused").exists());
+
+        // Mojang updates an asset index in place: one with more entries still assembles.
+        fs::write(
+            assets.join("indexes/34.json"),
+            format!("{{\"objects\": {{\"minecraft/sounds/a.ogg\": {{\"hash\": \"{hash}\", \"size\": 9}}, \"minecraft/sounds/new.ogg\": {{\"hash\": \"00ff\", \"size\": 1}}}}}}"),
+        )
+        .unwrap();
+        let sources = Sources {
+            facts: &pack,
+            client_jar: &jar,
+            assets: &assets,
+        };
+        let updated = root.join("updated-index");
+        assert_eq!(assemble(&sources, &updated, &|_, _| {}).unwrap(), 4);
+        assert_eq!(
+            fs::read(updated.join("assets/minecraft/sounds/a.ogg")).unwrap(),
+            sound
+        );
+
+        // An asset gone from the store names the file and leaves no tree behind.
+        fs::remove_file(object_path(&assets, &hash)).unwrap();
+        let missing = root.join("missing");
+        let error = assemble(&sources, &missing, &|_, _| {}).unwrap_err();
+        assert!(
+            error.starts_with("assets/minecraft/sounds/a.ogg is missing"),
+            "{error}"
+        );
+        assert!(!missing.exists());
         let _ = fs::remove_dir_all(&root);
     }
 }

@@ -64,9 +64,15 @@ struct State {
     scroll_from: Option<[f32; 2]>,
 }
 
-/// Where the game folder keeps the touch layout the launcher's editor writes
-/// (`horizon_client_render::touch::layout::Settings` as JSON; the game runs in that folder).
-const LAYOUT_FILE: &str = "touch-controls.json";
+/// The touch layout the launcher's editor writes (`horizon_client_render::touch::layout::Settings`
+/// as JSON): one for every instance, in the app's Documents. The game runs in the instance's
+/// folder (`--game-dir`), so the path isn't relative to it.
+fn layout_file() -> std::path::PathBuf {
+    match std::env::var_os("HOME") {
+        Some(home) => std::path::Path::new(&home).join("Documents/touch-controls.json"),
+        None => "touch-controls.json".into(),
+    }
+}
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
@@ -76,7 +82,7 @@ fn with<T>(f: impl FnOnce(&mut State) -> T) -> T {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         if s.settings.is_none() {
-            s.settings = Some(layout::Settings::load(std::path::Path::new(LAYOUT_FILE)));
+            s.settings = Some(layout::Settings::load(&layout_file()));
         }
         f(&mut s)
     })
@@ -225,7 +231,11 @@ impl Game<'_> {
         let at = [touch.location.x as f32, touch.location.y as f32];
         self.last_input = Instant::now();
         match touch.phase {
-            TouchPhase::Started => self.touch_started(event_loop, touch.id, at, size),
+            TouchPhase::Started => {
+                // A finger takes over from a controller, as the mouse does.
+                self.pad_yield_input(event_loop);
+                self.touch_started(event_loop, touch.id, at, size)
+            }
             TouchPhase::Moved => self.touch_moved(event_loop, touch.id, at, size),
             TouchPhase::Ended | TouchPhase::Cancelled => {
                 self.touch_ended(event_loop, touch.id, at, touch.phase == TouchPhase::Ended)
@@ -497,7 +507,8 @@ impl Game<'_> {
 
     /// The touch controls over the HUD, in play, once a finger has touched the screen.
     pub(super) fn draw_touch_over_hud(&self, batch: &mut HudBatch) {
-        if !self.touch_playing() || !with(|s| s.seen) {
+        // A controller playing hides them until a finger is back on the screen.
+        if !self.touch_playing() || !with(|s| s.seen) || self.pad.in_use {
             return;
         }
         let Some(size) = self.touch_surface() else {

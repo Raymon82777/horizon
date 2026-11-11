@@ -2,14 +2,14 @@ import SwiftUI
 
 /// The game's latest log and its crash reports, readable and shareable.
 struct LogsView: View {
+    let root: URL
     @State private var crashes: [URL] = []
 
     var body: some View {
-        NavigationStack {
-            List {
+        List {
                 Section("Game log") {
                     NavigationLink {
-                        TextFileView(url: GameFolders.logs.appendingPathComponent("latest.log"), tail: true)
+                        TextFileView(url: root.appendingPathComponent("logs/latest.log"), tail: true)
                     } label: {
                         Label("Latest log", systemImage: "doc.text")
                     }
@@ -33,14 +33,12 @@ struct LogsView: View {
                     }
                 }
             }
-            .navigationTitle("Logs")
-            .refreshable { reload() }
-        }
+        .refreshable { reload() }
         .onAppear(perform: reload)
     }
 
     private func reload() {
-        crashes = GameFolders.entries(GameFolders.crashReports)
+        crashes = GameFolders.entries(root.appendingPathComponent("crash-reports"))
             .sorted { (GameFolders.modified($0) ?? .distantPast) > (GameFolders.modified($1) ?? .distantPast) }
     }
 }

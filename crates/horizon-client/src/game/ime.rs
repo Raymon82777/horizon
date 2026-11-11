@@ -47,6 +47,10 @@ impl Game<'_> {
     /// Allow the input method only while a text box has focus.
     pub(super) fn sync_ime(&mut self) {
         let want = self.text_field_focused();
+        // ios: while a controller plays, its own on-screen keyboard types and the system one
+        // stays away; a finger on the screen takes over from the pad and brings it up.
+        #[cfg(target_os = "ios")]
+        let want = want && !self.pad.in_use;
         if want != self.ime_allowed
             && let Some(window) = &self.window
         {

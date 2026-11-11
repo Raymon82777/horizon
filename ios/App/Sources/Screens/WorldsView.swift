@@ -12,19 +12,30 @@ struct World: Identifiable, Hashable {
 
 /// The worlds in saves/: play one, make one, rename, duplicate, delete, import and export.
 struct WorldsView: View {
-    @AppStorage("world") private var selectedWorld = "New World"
+    let instanceID: String
+    @EnvironmentObject private var instances: Instances
+    private var instance: Instance { instances.list.first { $0.id == instanceID } ?? instances.current }
+    private var selectedWorld: String { instance.world }
+    private var saves: URL { instance.url.appendingPathComponent("saves", isDirectory: true) }
+
+    /// Picks the world this instance plays.
+    private func setWorld(_ name: String) {
+        var changed = instance
+        changed.world = name
+        instances.update(changed)
+    }
     @AppStorage("tab") private var tab = Tab.play
     @State private var worlds: [World] = []
     @State private var renaming: World?
     @State private var newName = ""
     @State private var creating = false
     @State private var deleting: World?
+    @State private var datapacks: World?
     @State private var importing = false
     @State private var shared: URL?
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
             List {
                 if worlds.isEmpty {
                     ContentUnavailableView("No worlds yet", systemImage: "globe",
@@ -33,30 +44,15 @@ struct WorldsView: View {
                 ForEach(worlds) { world in
                     row(world)
                 }
-            }
-            .navigationTitle("Worlds")
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Import", systemImage: "square.and.arrow.down") { importing = true }
-                    Button("New world", systemImage: "plus") {
-                        newName = "New World"
-                        creating = true
-                    }
+                Section {
+                    Button("Import a world from Files", systemImage: "square.and.arrow.down") { importing = true }
+                } footer: {
+                    Text("Make new worlds in the game: Play, then Singleplayer → Create New World. A world's Play button here goes straight into it.")
                 }
             }
             .refreshable { reload() }
-        }
         .onAppear(perform: reload)
-        .alert("New world", isPresented: $creating) {
-            TextField("Name", text: $newName)
-            Button("Create") {
-                let name = GameFolders.unique(clean(newName), in: GameFolders.saves).lastPathComponent
-                play(name)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The world is generated when you first play it, with the seed and mode from the Play tab.")
-        }
+        .onChange(of: instanceID) { reload() }
         .alert("Rename world", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Rename") { if let world = renaming { rename(world, to: newName) } }
@@ -73,6 +69,16 @@ struct WorldsView: View {
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.zip, .folder]) { result in
             do { try importWorld(result.get()) } catch { self.error = error.localizedDescription }
+        }
+        .sheet(item: $datapacks, onDismiss: reload) { world in
+            NavigationStack {
+                PacksView(root: world.url, kind: .datapack)
+                    .navigationTitle("\(world.name): data packs")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Done") { datapacks = nil } }
+                    }
+            }
         }
         .sheet(item: Binding(get: { shared.map(SharedFile.init) }, set: { shared = $0?.url })) { file in
             ShareSheet(items: [file.url])
@@ -101,7 +107,7 @@ struct WorldsView: View {
                 HStack {
                     Text(world.name).font(.headline)
                     if world.name == selectedWorld {
-                        Text("Selected").font(.caption2.bold()).padding(.horizontal, 6).padding(.vertical, 2)
+                        Text("Last played").font(.caption2.bold()).padding(.horizontal, 6).padding(.vertical, 2)
                             .background(.green.opacity(0.25), in: Capsule())
                     }
                 }
@@ -117,6 +123,7 @@ struct WorldsView: View {
                     newName = world.name
                     renaming = world
                 }
+                Button("Data packs", systemImage: "shippingbox") { datapacks = world }
                 Button("Duplicate", systemImage: "plus.square.on.square") { duplicate(world) }
                 Button("Export", systemImage: "square.and.arrow.up") { export(world) }
                 Divider()
@@ -127,13 +134,12 @@ struct WorldsView: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .onTapGesture { selectedWorld = world.name }
     }
 
     // MARK: Actions
 
     private func reload() {
-        worlds = GameFolders.entries(GameFolders.saves)
+        worlds = GameFolders.entries(saves)
             .filter(GameFolders.isDirectory)
             .map { url in
                 let level = url.appendingPathComponent("level.dat")
@@ -146,10 +152,13 @@ struct WorldsView: View {
             .sorted { ($0.lastPlayed ?? .distantPast) > ($1.lastPlayed ?? .distantPast) }
     }
 
-    /// Select the world and go to the Play tab.
+    /// Straight into the world: select its instance, then the Play tab starts it.
+    @AppStorage("quickPlay") private var quickPlay = ""
     private func play(_ name: String) {
-        selectedWorld = name
+        setWorld(name)
+        instances.select(instance)
         tab = .play
+        quickPlay = name
     }
 
     /// Folder names: no path separators, no leading dots.
@@ -162,16 +171,16 @@ struct WorldsView: View {
     }
 
     private func rename(_ world: World, to name: String) {
-        let target = GameFolders.unique(clean(name), in: GameFolders.saves)
+        let target = GameFolders.unique(clean(name), in: saves)
         do {
             try FileManager.default.moveItem(at: world.url, to: target)
-            if selectedWorld == world.name { selectedWorld = target.lastPathComponent }
+            if selectedWorld == world.name { setWorld(target.lastPathComponent) }
         } catch { self.error = error.localizedDescription }
         reload()
     }
 
     private func duplicate(_ world: World) {
-        let target = GameFolders.unique("\(world.name) copy", in: GameFolders.saves)
+        let target = GameFolders.unique("\(world.name) copy", in: saves)
         do {
             try FileManager.default.copyItem(at: world.url, to: target)
             // A copy isn't the same world while it's open: the session lock stays behind.
@@ -193,7 +202,7 @@ struct WorldsView: View {
     private func importWorld(_ source: URL) throws {
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
-        try FileManager.default.createDirectory(at: GameFolders.saves, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
         var folder = source
         var name = source.deletingPathExtension().lastPathComponent
         var unpacked: URL?
@@ -212,7 +221,7 @@ struct WorldsView: View {
             folder = inner
             name = inner.lastPathComponent
         }
-        let target = GameFolders.unique(clean(name), in: GameFolders.saves)
+        let target = GameFolders.unique(clean(name), in: saves)
         if unpacked != nil {
             try FileManager.default.moveItem(at: folder, to: target)
         } else {

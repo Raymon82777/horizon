@@ -24,7 +24,8 @@ struct TouchLayoutEditor: View {
     /// What the game draws in the crosshair scheme (Settings, Debug, Swap and Shield don't show).
     static let shown = [0, 1, 2, 3, 4, 5, 6, 7, 9, 11]
 
-    static var file: URL { GameFolders.root.appendingPathComponent("touch-controls.json") }
+    /// Documents, the game's working folder: one layout for every instance.
+    static var file: URL { GameBridge.documents.appendingPathComponent("touch-controls.json") }
 
     @Environment(\.dismiss) private var dismiss
     @State private var row = Self.defaults

@@ -96,7 +96,10 @@ pub unsafe extern "C" fn horizon_ios_free_string(text: *mut c_char) {
 /// # Safety
 /// Both paths are valid NUL-terminated UTF-8 strings.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn horizon_ios_unzip(archive: *const c_char, out: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn horizon_ios_unzip(
+    archive: *const c_char,
+    out: *const c_char,
+) -> *mut c_char {
     // SAFETY: the caller passes valid C strings.
     let path = |p: *const c_char| unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned();
     let (archive, out) = (path(archive), path(out));
@@ -108,4 +111,123 @@ pub unsafe extern "C" fn horizon_ios_unzip(archive: *const c_char, out: *const c
         Ok(()) => std::ptr::null_mut(),
         Err(e) => CString::new(e).map_or(std::ptr::null_mut(), CString::into_raw),
     }
+}
+
+fn c_path(p: *const c_char) -> String {
+    // SAFETY: callers pass valid NUL-terminated strings (see each function's contract).
+    unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
+}
+
+fn c_result(result: Result<(), String>) -> *mut c_char {
+    match result {
+        Ok(()) => std::ptr::null_mut(),
+        Err(e) => CString::new(e).map_or(std::ptr::null_mut(), CString::into_raw),
+    }
+}
+
+/// Checks a file downloaded from Horizon's mod registry before it's installed, with the
+/// registry's own checks (`horizon_mods::index::check_file`): size, SHA-256, revocation, the
+/// author's signature when the project has a key, and that its manifest says what the index
+/// says. `index` is the path of the registry's index.json. Null when the file passes, else why
+/// not (free it with [`horizon_ios_free_string`]).
+///
+/// # Safety
+/// The four arguments are valid NUL-terminated UTF-8 strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mod_check(
+    index: *const c_char,
+    id: *const c_char,
+    version: *const c_char,
+    file: *const c_char,
+) -> *mut c_char {
+    let (index, id, version, file) = (c_path(index), c_path(id), c_path(version), c_path(file));
+    c_result((|| {
+        let text = std::fs::read_to_string(&index).map_err(|e| format!("{index}: {e}"))?;
+        let index = horizon_mods::index::Index::parse(&text)?;
+        let project = index
+            .project(&id)
+            .ok_or_else(|| format!("{id} isn't in the registry"))?;
+        let entry = project
+            .versions
+            .iter()
+            .find(|v| v.version == version)
+            .ok_or_else(|| format!("{id} has no version {version}"))?;
+        horizon_mods::index::check_file(&index, project, entry, Path::new(&file)).map(|_| ())
+    })())
+}
+
+/// A content mod's manifest as JSON (`{"id", "name", "version", "description", "authors",
+/// "capabilities", "code"}`; `code`: it carries wasm, which iOS can't run), else
+/// `{"error": "…"}`. Free the result with [`horizon_ios_free_string`].
+///
+/// # Safety
+/// `file` is a valid NUL-terminated UTF-8 string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_mod_manifest(file: *const c_char) -> *mut c_char {
+    let file = c_path(file);
+    let json = match horizon_mods::Package::read(Path::new(&file)) {
+        Ok(package) => {
+            let m = package.manifest;
+            serde_json::json!({
+                "id": m.id,
+                "name": m.name,
+                "version": m.version,
+                "description": m.description,
+                "authors": m.authors,
+                "capabilities": m.capabilities.iter().map(|c| format!("{c:?}").to_lowercase()).collect::<Vec<_>>(),
+                "code": package.wasm.is_some(),
+            })
+        }
+        Err(e) => serde_json::json!({ "error": e }),
+    };
+    CString::new(json.to_string()).map_or(std::ptr::null_mut(), CString::into_raw)
+}
+
+/// The game controller Apple's GameController framework calls current connected: `family` 0
+/// Xbox, 1 PlayStation, 2 Nintendo, anything else unknown (Xbox glyphs); `name` its name.
+///
+/// # Safety
+/// `name` is a valid NUL-terminated UTF-8 string or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn horizon_ios_pad_connected(family: c_int, name: *const c_char) {
+    use horizon_client::gamepad::GlyphStyle;
+    let style = match family {
+        0 => GlyphStyle::Xbox,
+        1 => GlyphStyle::PlayStation,
+        2 => GlyphStyle::Nintendo,
+        _ => GlyphStyle::Auto,
+    };
+    let name = if name.is_null() {
+        String::new()
+    } else {
+        c_path(name)
+    };
+    horizon_client::gamepad::platform::connect(style, &name);
+}
+
+/// The current controller went away.
+#[unsafe(no_mangle)]
+pub extern "C" fn horizon_ios_pad_disconnected() {
+    horizon_client::gamepad::platform::disconnect();
+}
+
+/// The current controller's whole state: `buttons` a bit set in `gamepad::Button`'s order
+/// (south, east, west, north, LB, RB, LT, RT, select, start, LS, RS, D-pad up, down, left,
+/// right), sticks with right and up positive (-1..1), triggers 0..1.
+#[unsafe(no_mangle)]
+pub extern "C" fn horizon_ios_pad_state(
+    buttons: u32,
+    lx: f32,
+    ly: f32,
+    rx: f32,
+    ry: f32,
+    lt: f32,
+    rt: f32,
+) {
+    horizon_client::gamepad::platform::set_state(horizon_client::gamepad::PadState {
+        buttons,
+        left: [lx, ly],
+        right: [rx, ry],
+        triggers: [lt, rt],
+    });
 }

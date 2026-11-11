@@ -10,6 +10,8 @@ enum GameBridge {
     static func run(arguments: [String]) {
         // Relative --resources/--game-dir/--home resolve here.
         FileManager.default.changeCurrentDirectoryPath(documents.path)
+        // Controllers reach the game through the GameController framework.
+        Controllers.start()
         // Start outside the button's event callout and outside GCD's main queue: the game turns
         // the main run loop itself and never returns, and main-queue work must keep running.
         CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue) {
