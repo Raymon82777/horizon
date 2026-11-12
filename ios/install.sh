@@ -104,7 +104,7 @@ log="$app_dir/build.log"
 started=$(date +%s)
 if ! xcodebuild -project Horizon.xcodeproj -scheme Horizon -configuration "$configuration" \
     -destination "id=$udid" -allowProvisioningUpdates -derivedDataPath build \
-    CURRENT_PROJECT_VERSION="$(date +%y%m%d.%H%M)" HORIZON_BUILD_HOST="$build_host" build >"$log" 2>&1; then
+    CURRENT_PROJECT_VERSION="$(date +%y%m%d.%H%M)" HORIZON_BUILD_HOST="$build_host" HORIZON_BUILD_LOCAL="$HORIZON_BUILD_LOCAL" HORIZON_BUILD_TOKEN="$HORIZON_BUILD_TOKEN" build >"$log" 2>&1; then
     grep -E 'error:|warning: .*(provision|sign)' "$log" | sort -u | head -20 >&2
     echo "Build failed; the whole log is in $log" >&2
     exit 1

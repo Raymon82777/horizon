@@ -61,7 +61,11 @@ struct PacksView: View {
                         Text("Nothing installed yet.").foregroundStyle(.secondary)
                     }
                     ForEach(items) { item in
-                        row(item)
+                        if let page = page(item) {
+                            NavigationLink { page } label: { row(item) }
+                        } else {
+                            row(item)
+                        }
                     }
                 } header: {
                     Text("Installed")
@@ -165,6 +169,26 @@ struct PacksView: View {
         .contextMenu {
             Button("Remove", systemImage: "trash", role: .destructive) { deleting = item }
         }
+    }
+
+    /// The page of the project an installed file came from: the registry's, or Modrinth's.
+    private func page(_ item: Item) -> AnyView? {
+        if let key = item.registryID, key.hasPrefix("modrinth:") {
+            let id = String(key.dropFirst("modrinth:".count))
+            let hit = Modrinth.Hit(projectID: id, slug: id, title: item.name, description: "", author: nil,
+                                   downloads: 0, iconURL: nil, versions: nil)
+            return AnyView(ModrinthProjectPage(hit: hit, kind: kind, root: root, everything: false) { reload() })
+        }
+        guard let project = registryProject(for: item) else { return nil }
+        let newest = index.flatMap { ModRegistry.installable(project, in: $0) }
+        let action: ProjectAction = if busy == project.id {
+            .working
+        } else if let newer = updateFor(item) {
+            .button("Update to \(newer.version)") { Task { await update(item) } }
+        } else {
+            .done("Installed")
+        }
+        return AnyView(RegistryProjectPage(project: project, version: newest, action: action))
     }
 
     // MARK: Data
@@ -361,6 +385,7 @@ struct RegistryBrowser: View {
                     Text(project.name).font(.headline)
                     if project.signed {
                         Image(systemName: "checkmark.seal.fill").foregroundStyle(.green).font(.caption)
+                            .accessibilityLabel("Signed by its author")
                     }
                 }
                 Text(project.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
@@ -393,13 +418,39 @@ struct RegistryBrowser: View {
     }
 }
 
-/// A registry project's page: description, details, install.
+/// What a registry project's page offers in its header.
+enum ProjectAction {
+    case none
+    case working
+    /// Done already: "Installed", "Added".
+    case done(String)
+    case button(String, () -> Void)
+}
+
+/// A registry project's page: its full description, details, and an action (install, add).
 struct RegistryProjectPage: View {
     let project: RegistryProject
     let version: RegistryVersion?
-    let installed: InstalledRecord?
-    let installing: Bool
-    let install: () -> Void
+    let action: ProjectAction
+
+    init(project: RegistryProject, version: RegistryVersion?, action: ProjectAction) {
+        self.project = project
+        self.version = version
+        self.action = action
+    }
+
+    /// The registry browser's: install, update, or installed.
+    init(project: RegistryProject, version: RegistryVersion?, installed: InstalledRecord?, installing: Bool,
+         install: @escaping () -> Void) {
+        let action: ProjectAction = if installing {
+            .working
+        } else if let installed, installed.version == version?.version {
+            .done("Installed")
+        } else {
+            .button(installed == nil ? "Install" : "Update", install)
+        }
+        self.init(project: project, version: version, action: action)
+    }
 
     var body: some View {
         List {
@@ -411,22 +462,20 @@ struct RegistryProjectPage: View {
                         Text((project.authors ?? []).joined(separator: ", ")).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    if installing {
-                        ProgressView()
-                    } else if let installed, installed.version == version?.version {
-                        Label("Installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                    } else {
-                        Button(installed == nil ? "Install" : "Update", action: install).buttonStyle(.borderedProminent)
+                    switch action {
+                    case .none: EmptyView()
+                    case .working: ProgressView()
+                    case let .done(title):
+                        Label(title, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    case let .button(title, run):
+                        Button(title, action: run).buttonStyle(.borderedProminent)
                     }
                 }
                 Text(project.summary)
             }
             if let description = project.description, !description.isEmpty {
                 Section("About") {
-                    Text((try? AttributedString(markdown: description,
-                                                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                         ?? AttributedString(description))
-                        .font(.callout)
+                    MarkdownView(description)
                 }
             }
             Section("Details") {
@@ -442,7 +491,7 @@ struct RegistryProjectPage: View {
                 }
             }
             if let changelog = version?.changelog, !changelog.isEmpty {
-                Section("What's new") { Text(changelog).font(.callout) }
+                Section("What's new") { MarkdownView(changelog) }
             }
         }
         .navigationTitle(project.name)

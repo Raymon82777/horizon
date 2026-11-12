@@ -144,12 +144,13 @@ struct LauncherView: View {
 
     /// The instance's game framework; one whose native mods aren't built yet asks first.
     private func start(_ args: [String], _ instance: Instance, anyway: Bool = false) {
-        if !instance.gameBuilt && !anyway {
+        let built = instances.gameBuilt(for: instance)
+        if !built && !anyway {
             pendingArgs = args
             return
         }
         do {
-            try GameBridge.run(arguments: args, game: instance.gameBuilt ? instance.gameName : GameBridge.baseGame)
+            try GameBridge.run(arguments: args, game: built ? instances.gameName(for: instance) : GameBridge.baseGame)
         } catch {
             accounts.error = error.localizedDescription
         }

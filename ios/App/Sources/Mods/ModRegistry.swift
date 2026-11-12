@@ -173,6 +173,19 @@ enum ModSwitches {
         return on
     }
 
+    /// The mods turned off (`mod.<id>:false`): for a native mod, off in this instance.
+    static func disabled(_ root: URL) -> Set<String> {
+        guard let text = try? String(contentsOf: file(root), encoding: .utf8) else { return [] }
+        var off = Set<String>()
+        for line in text.split(separator: "\n") {
+            let parts = line.split(separator: ":", maxSplits: 1)
+            if parts.count == 2, parts[0].hasPrefix("mod."), parts[1].trimmingCharacters(in: .whitespaces) == "false" {
+                off.insert(String(parts[0].dropFirst(4)))
+            }
+        }
+        return off
+    }
+
     /// Turns `id` on or off; `nil` removes its line (an uninstalled mod).
     static func set(_ id: String, _ on: Bool?, _ root: URL) {
         let file = file(root)

@@ -46,3 +46,15 @@ fi
 export HORIZON_IOS_TEAM HORIZON_IOS_BUNDLE_ID HORIZON_IOS_PAID HORIZON_IOS_ENTITLEMENTS HORIZON_SOURCE_URL
 [ -z "${HORIZON_IOS_DEVICE:-}" ] || export HORIZON_IOS_DEVICE
 [ -z "${HORIZON_IOS_IDENTITY:-}" ] || export HORIZON_IOS_IDENTITY
+
+# How the app reaches build-server.py on this Mac without Tailscale, when the phone is on the same
+# network: this Mac's Bonjour name, and a secret only the apps built here know (ios/build/, never
+# committed). build-server.py reads the same file.
+HORIZON_BUILD_LOCAL=$(scutil --get LocalHostName 2>/dev/null || true)
+[ -z "$HORIZON_BUILD_LOCAL" ] || HORIZON_BUILD_LOCAL="$HORIZON_BUILD_LOCAL.local:8767"
+token_file="$here/build/build-token"
+if [ ! -s "$token_file" ]; then
+    mkdir -p "$here/build"
+    (umask 077 && python3 -I -c 'import secrets; print(secrets.token_urlsafe(32))' > "$token_file")
+fi
+HORIZON_BUILD_TOKEN=$(cat "$token_file")

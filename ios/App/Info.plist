@@ -17,6 +17,17 @@
 	<string>$(HORIZON_SOURCE_URL)</string>
 	<key>HorizonBuildHost</key>
 	<string>$(HORIZON_BUILD_HOST)</string>
+	<key>HorizonBuildLocal</key>
+	<string>$(HORIZON_BUILD_LOCAL)</string>
+	<key>HorizonBuildToken</key>
+	<string>$(HORIZON_BUILD_TOKEN)</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Horizon asks your Mac on this network to build your native mods, without going through Tailscale.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchScreen</key>

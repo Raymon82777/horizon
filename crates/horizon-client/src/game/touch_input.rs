@@ -10,6 +10,11 @@
 //! layout's buttons jump, sneak (a toggle), sprint, attack, use, open the inventory, chat, pause
 //! and switch the camera; a tap on the hotbar selects that slot.
 //!
+//! Over the inventory (survival's, a container's, creative's) two buttons sit in the top right
+//! corner: one closes it, as Escape does, and one brings up the keyboard, whose keys then act as a
+//! hardware keyboard's (a search box, JEI's R and U, the hotbar's numbers). The keyboard goes
+//! away with the inventory.
+//!
 //! State lives in a thread-local (the game runs on the main thread) so the upstream `Game`
 //! struct stays untouched.
 use super::*;
@@ -47,6 +52,8 @@ enum Role {
     },
     /// A held layout button.
     Button(Control),
+    /// A finger on one of the inventory's buttons; it acts when lifted over it.
+    MenuButton(MenuButton),
     /// Swallowed (a hotbar tap, a second pointer finger).
     Ignored,
 }
@@ -62,6 +69,42 @@ struct State {
     held: Vec<&'static str>,
     /// The scrolling fingers' midpoint last time (pixels).
     scroll_from: Option<[f32; 2]>,
+    /// The keyboard button brought the keyboard up, with no text box asking for it: it goes when
+    /// the inventory does.
+    keyboard_shown: bool,
+}
+
+/// The buttons over the inventory, right to left from the top right corner.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MenuButton {
+    Close,
+    Keyboard,
+}
+
+impl MenuButton {
+    const ALL: [MenuButton; 2] = [MenuButton::Close, MenuButton::Keyboard];
+
+    /// Its centre and radius on a `size` screen (pixels): a row along the top edge, below the
+    /// Dynamic Island in portrait.
+    fn place(self, size: [f32; 2]) -> ([f32; 2], f32) {
+        let radius = size[0].min(size[1]) * 0.055;
+        let gap = radius * 0.5;
+        let top = if size[1] > size[0] {
+            size[1] * 0.085
+        } else {
+            gap
+        };
+        let index = MenuButton::ALL.iter().position(|b| *b == self).unwrap_or(0) as f32;
+        let x = size[0] - gap - radius - index * (2.0 * radius + gap);
+        ([x, top + radius], radius)
+    }
+
+    fn at(at: [f32; 2], size: [f32; 2]) -> Option<MenuButton> {
+        MenuButton::ALL.into_iter().find(|b| {
+            let (c, r) = b.place(size);
+            (at[0] - c[0]).hypot(at[1] - c[1]) <= r * 1.15
+        })
+    }
 }
 
 /// The touch layout the launcher's editor writes (`horizon_client_render::touch::layout::Settings`
@@ -126,6 +169,32 @@ impl Game<'_> {
 
     fn touch_playing(&self) -> bool {
         self.title.is_none() && self.screen == Screen::Playing && self.player.is_some()
+    }
+
+    /// The inventory is open (survival's, a container's or creative's), with nothing over it:
+    /// its Close and Keyboard buttons show.
+    fn touch_menu_buttons(&self) -> bool {
+        self.title.is_none()
+            && self.player.is_some()
+            && matches!(self.screen, Screen::Inventory | Screen::Creative)
+            && !self.prompt_open()
+            && !self.pad.in_use
+    }
+
+    fn touch_menu_button(&mut self, button: MenuButton) {
+        match button {
+            MenuButton::Close => {
+                if let Err(e) = self.pad_back() {
+                    log::warn!("Horizon: touch close: {e}");
+                }
+            }
+            MenuButton::Keyboard => {
+                if let Some(window) = &self.window {
+                    window.set_ime_allowed(true);
+                    with(|s| s.keyboard_shown = true);
+                }
+            }
+        }
     }
 
     fn touch_act(&mut self, action: &'static str, down: bool) {
@@ -273,7 +342,11 @@ impl Game<'_> {
             window.set_ime_allowed(true);
         }
         let role = if !self.touch_playing() {
-            if roles
+            if self.touch_menu_buttons()
+                && let Some(button) = MenuButton::at(at, size)
+            {
+                Role::MenuButton(button)
+            } else if roles
                 .iter()
                 .any(|r| matches!(r, Role::Pointer { pressed: false, .. }))
             {
@@ -413,7 +486,7 @@ impl Game<'_> {
                     self.look_turn(f64::from(turn[0] / 0.15), f64::from(turn[1] / 0.15));
                 }
             }
-            Role::Joystick { .. } | Role::Button(_) | Role::Ignored => {}
+            Role::Joystick { .. } | Role::Button(_) | Role::MenuButton(_) | Role::Ignored => {}
         }
     }
 
@@ -451,6 +524,14 @@ impl Game<'_> {
                 } else if ended && start.elapsed() < TAP && drift < STILL && self.touch_playing() {
                     self.touch_act("key.use", true);
                     self.touch_act("key.use", false);
+                }
+            }
+            Role::MenuButton(button) => {
+                if ended
+                    && let Some(size) = self.touch_surface()
+                    && MenuButton::at(at, size) == Some(button)
+                {
+                    self.touch_menu_button(button);
                 }
             }
             Role::Button(Control::Sneak) => {}
@@ -517,8 +598,21 @@ impl Game<'_> {
         }
     }
 
-    /// The touch controls over the HUD, in play, once a finger has touched the screen.
+    /// The touch controls over the HUD, in play, once a finger has touched the screen; over the
+    /// inventory, its Close and Keyboard buttons.
     pub(super) fn draw_touch_over_hud(&self, batch: &mut HudBatch) {
+        // The keyboard the button brought up goes with the inventory, unless a text box wants it.
+        if !self.touch_menu_buttons()
+            && !self.ime_allowed
+            && with(|s| std::mem::take(&mut s.keyboard_shown))
+            && let Some(window) = &self.window
+        {
+            window.set_ime_allowed(false);
+        }
+        if self.touch_menu_buttons() && with(|s| s.seen) {
+            self.draw_touch_menu_buttons(batch);
+            return;
+        }
         // A controller playing hides them until a finger is back on the screen.
         if !self.touch_playing() || !with(|s| s.seen) || self.pad.in_use {
             return;
@@ -589,6 +683,65 @@ impl Game<'_> {
             batch.fill_disc(atlas, base, radius, 0x50_20_20_20);
             batch.fill_disc(atlas, knob, radius * 0.42, 0xA0_C0_C0_C0);
         });
+    }
+}
+
+impl Game<'_> {
+    /// The inventory's Close (an X) and Keyboard (a little keyboard) buttons.
+    fn draw_touch_menu_buttons(&self, batch: &mut HudBatch) {
+        let Some(size) = self.touch_surface() else {
+            return;
+        };
+        let atlas = &self.gui.atlas;
+        let k = batch.width / size[0];
+        let held: Vec<MenuButton> = with(|s| {
+            s.fingers
+                .iter()
+                .filter_map(|f| match f.1 {
+                    Role::MenuButton(b) => Some(b),
+                    _ => None,
+                })
+                .collect()
+        });
+        for button in MenuButton::ALL {
+            let (centre, radius) = button.place(size);
+            let (c, r) = ([centre[0] * k, centre[1] * k], radius * k);
+            let fill = if held.contains(&button) {
+                0xE0_60_60_60
+            } else {
+                0xB0_20_20_20
+            };
+            batch.fill_disc(atlas, c, r, fill);
+            let ink = 0xF0_FF_FF_FF;
+            match button {
+                MenuButton::Close => {
+                    // An X of small squares along both diagonals.
+                    let half = r * 0.4;
+                    let dot = (r * 0.16).max(1.0);
+                    let steps = 7;
+                    for i in 0..=steps {
+                        let t = -half + 2.0 * half * i as f32 / steps as f32;
+                        for (x, y) in [(c[0] + t, c[1] + t), (c[0] + t, c[1] - t)] {
+                            batch.fill(atlas, x - dot / 2.0, y - dot / 2.0, dot, dot, ink);
+                        }
+                    }
+                }
+                MenuButton::Keyboard => {
+                    // Three rows of keys, the last a space bar.
+                    let (w, h) = (r * 1.1, r * 0.7);
+                    let (x0, y0) = (c[0] - w / 2.0, c[1] - h / 2.0);
+                    let key = w / 9.0;
+                    for row in 0..2 {
+                        for col in 0..4 {
+                            let x = x0 + key * 0.5 + col as f32 * key * 2.2;
+                            let y = y0 + row as f32 * h * 0.36;
+                            batch.fill(atlas, x, y, key * 1.2, key, ink);
+                        }
+                    }
+                    batch.fill(atlas, x0 + w * 0.22, y0 + h * 0.74, w * 0.56, key, ink);
+                }
+            }
+        }
     }
 }
 

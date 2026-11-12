@@ -67,10 +67,10 @@ struct DiagnosticsView: View {
         let memoryOn = report.physical > 0 && Double(report.limit) / Double(report.physical) > 0.55
         let addressingOn = report.reserved >= 16
         Label(memoryOn ? "Increased memory limit is in effect" : "Limit is about the usual share (iOS may not raise it on this model)",
-              systemImage: memoryOn ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+              systemImage: memoryOn ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
             .foregroundStyle(memoryOn ? .green : .orange)
         Label(addressingOn ? "Extended virtual addressing is in effect" : "Extended virtual addressing isn't in effect",
-              systemImage: addressingOn ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+              systemImage: addressingOn ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
             .foregroundStyle(addressingOn ? .green : .orange)
     }
 

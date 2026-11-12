@@ -1,8 +1,8 @@
 import CryptoKit
 import SwiftUI
 
-/// A native mod an instance asked for: built into its own game framework on the Mac
-/// (ios/native-build.sh), since a phone can't compile.
+/// A native mod in the app: every one is built into one game framework on the Mac
+/// (ios/native-build.py), since a phone can't compile, and each instance turns it on or off.
 struct NativeModChoice: Codable, Hashable, Identifiable {
     var id: String
     var name: String
@@ -27,21 +27,9 @@ struct Instance: Codable, Identifiable, Hashable {
     var renderDistance: Int = 8
     var seed: String = ""
     var creative: Bool = true
-    /// The native mods this instance plays with (nil or empty: none).
+    /// Before native mods were shared: the ones this instance chose. Read once, when
+    /// `Instances` moves them into the shared list, and nil from then on.
     var nativeMods: [NativeModChoice]?
-
-    /// The game framework this instance plays: HorizonGame without native mods, else one named
-    /// after the set (the same set in two instances shares one framework). native-build.sh
-    /// names its frameworks the same way.
-    var gameName: String {
-        let mods = (nativeMods ?? []).map { "\($0.id)@\($0.version)" }.sorted()
-        guard !mods.isEmpty else { return GameBridge.baseGame }
-        let digest = SHA256.hash(data: Data(mods.joined(separator: "\n").utf8))
-        return "HorizonGame-" + digest.prefix(6).map { String(format: "%02x", $0) }.joined()
-    }
-
-    /// Its native mods are built into the app (or it has none).
-    var gameBuilt: Bool { GameBridge.hasGame(gameName) }
 
     var isDefault: Bool { folder.isEmpty }
     var url: URL {
@@ -72,9 +60,15 @@ final class Instances: ObservableObject {
         return dir.appendingPathComponent("instances.json")
     }
 
+    /// The native mods, shared by every instance: one game framework holds them all, and each
+    /// instance turns each one on or off (`mod.<id>:false` in its horizon-mods.txt, the game's own
+    /// switch: Options → Mods).
+    @Published private(set) var nativeMods: [NativeModChoice] = []
+
     private struct Saved: Codable {
         var instances: [Instance]
         var selected: String
+        var nativeMods: [NativeModChoice]?
     }
 
     init() {
@@ -83,6 +77,8 @@ final class Instances: ObservableObject {
         {
             list = saved.instances
             selectedID = list.contains { $0.id == saved.selected } ? saved.selected : list[0].id
+            nativeMods = saved.nativeMods ?? []
+            if saved.nativeMods == nil { shareNativeMods() }
         } else {
             // First run with instances: what was there becomes Default, settings and all.
             let defaults = UserDefaults.standard
@@ -254,13 +250,83 @@ final class Instances: ObservableObject {
         return "instances/\(url.lastPathComponent)"
     }
 
+    // MARK: Native mods
+
+    /// HorizonGame-<first 6 bytes of SHA-256 of the sorted id@version lines>: the framework the
+    /// shared native mods are built into. native-build.py names it the same way.
+    var nativeGameName: String {
+        let lines = nativeMods.map { "\($0.id)@\($0.version)" }.sorted()
+        guard !lines.isEmpty else { return GameBridge.baseGame }
+        let digest = SHA256.hash(data: Data(lines.joined(separator: "\n").utf8))
+        return "HorizonGame-" + digest.prefix(6).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The shared native mods are built into the app as they are now.
+    var nativeBuilt: Bool { GameBridge.hasGame(nativeGameName) }
+
+    /// The native mods on in `instance` (every one is, until turned off there).
+    func nativeOn(in instance: Instance) -> [NativeModChoice] {
+        let off = ModSwitches.disabled(instance.url)
+        return nativeMods.filter { !off.contains($0.id) }
+    }
+
+    /// The framework `instance` plays: the plain game when none of the native mods is on in it.
+    func gameName(for instance: Instance) -> String {
+        nativeOn(in: instance).isEmpty ? GameBridge.baseGame : nativeGameName
+    }
+
+    /// The game `instance` plays is in the app.
+    func gameBuilt(for instance: Instance) -> Bool { GameBridge.hasGame(gameName(for: instance)) }
+
+    func setNativeOn(_ id: String, _ on: Bool, in instance: Instance) {
+        try? FileManager.default.createDirectory(at: instance.url, withIntermediateDirectories: true)
+        ModSwitches.set(id, on, instance.url)
+        objectWillChange.send()
+    }
+
+    /// Adds `mod` (or another version of it): on in every instance that hasn't turned it off.
+    func addNativeMod(_ mod: NativeModChoice) {
+        nativeMods.removeAll { $0.id == mod.id }
+        nativeMods.append(mod)
+        save()
+    }
+
+    /// Takes `id` out of the shared build, and its switch out of every instance.
+    func removeNativeMod(_ id: String) {
+        nativeMods.removeAll { $0.id == id }
+        for instance in list { ModSwitches.set(id, nil, instance.url) }
+        save()
+    }
+
+    /// Once, from when each instance had its own native mods: they become the shared list (the
+    /// newest version of each), off in the instances that hadn't chosen them.
+    private func shareNativeMods() {
+        var shared: [String: NativeModChoice] = [:]
+        for mod in list.flatMap({ $0.nativeMods ?? [] }) {
+            if let have = shared[mod.id], have.version.compare(mod.version, options: .numeric) != .orderedAscending {
+                continue
+            }
+            shared[mod.id] = mod
+        }
+        nativeMods = shared.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        for i in list.indices {
+            let chose = Set((list[i].nativeMods ?? []).map(\.id))
+            for id in shared.keys where !chose.contains(id) {
+                try? FileManager.default.createDirectory(at: list[i].url, withIntermediateDirectories: true)
+                ModSwitches.set(id, false, list[i].url)
+            }
+            list[i].nativeMods = nil
+        }
+        save()
+    }
+
     /// The selected instance's folder, for the screens that work in it (GameFolders.root).
     private func publishFolder() {
         UserDefaults.standard.set(current.folder, forKey: "instanceFolder")
     }
 
     private func save() {
-        let data = try? JSONEncoder().encode(Saved(instances: list, selected: selectedID))
+        let data = try? JSONEncoder().encode(Saved(instances: list, selected: selectedID, nativeMods: nativeMods))
         try? data?.write(to: file, options: .atomic)
     }
 }

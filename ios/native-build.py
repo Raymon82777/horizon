@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Builds the game frameworks for the iPhone instances that chose native mods.
+"""Builds the game framework with the iPhone app's native mods.
 
-Native mods are patches to the game's Rust source (horizon-mixins bundles), so each set of them is
-a game of its own: for every distinct set an instance on the phone chose, this downloads the mods
-from Horizon's registry (size and SHA-256 checked), applies them to a copy of this fork's source,
-builds that game for iOS and packages it as ios/build/frameworks/HorizonGame-<set>.framework,
-which install.sh puts in the app. The app plays each instance with its set's framework
-(Instance.gameName in ios/App/Sources/Instances.swift names them the same way).
+Native mods are patches to the game's Rust source (horizon-mixins bundles). The app keeps one
+list of them, shared by its instances: this downloads them from Horizon's registry (size and SHA-256
+checked), applies them to a copy of this fork's source, builds that game for iOS and packages it
+as ios/build/frameworks/HorizonGame-<set>.framework, which install.sh puts in the app
+(Instances.nativeGameName in ios/App/Sources/Instances.swift names it the same way). Each instance
+turns each mod on or off with the game's own switch (mod.<id>:false in its horizon-mods.txt).
 
 A mod that doesn't apply to this source on its own is left out and named, as the desktop
 launcher does (docs/native-mods.md). Frameworks no instance uses any more are removed.
@@ -14,7 +14,8 @@ launcher does (docs/native-mods.md). Frameworks no instance uses any more are re
 Native mods are unsandboxed code: building them needs --trust-native-code, the player's decision.
 
 Usage: ios/native-build.py (--device UDID | --instances FILE) [--trust-native-code] [--dry-run]
-  --instances FILE   the instances the phone sent (build-server.py) instead of reading the phone
+  --instances FILE   what the phone sent (build-server.py), {"nativeMods": [...]}, instead of
+                     reading the phone
 """
 import argparse
 import hashlib
@@ -73,14 +74,29 @@ def game_name(mods):
 
 
 def phone_instances(device):
-    """instances.json from the app's Application Support on the phone."""
+    """instances.json from the app's Application Support on the phone: the app's saved state."""
     with tempfile.TemporaryDirectory() as tmp:
         dest = Path(tmp) / "instances.json"
         run(["xcrun", "devicectl", "device", "copy", "from", "--device", device,
              "--domain-type", "appDataContainer", "--domain-identifier", signing("HORIZON_IOS_BUNDLE_ID"),
              "--source", "Library/Application Support/instances.json", "--destination", str(dest)],
             stdout=subprocess.DEVNULL)
-        return json.loads(dest.read_text())["instances"]
+        return json.loads(dest.read_text())
+
+
+def shared_mods(saved):
+    """The app's native mods: its shared list ({"nativeMods": [...]}), or, from an app before they
+    were shared, every instance's together, the newest version of each."""
+    if "nativeMods" in saved:
+        return saved["nativeMods"] or []
+    newest = {}
+    for inst in saved.get("instances", []):
+        for m in inst.get("nativeMods") or []:
+            have = newest.get(m["id"])
+            if have is None or tuple(map(int, re.findall(r"\d+", m["version"]))) > \
+                    tuple(map(int, re.findall(r"\d+", have["version"]))):
+                newest[m["id"]] = m
+    return list(newest.values())
 
 
 def registry():
@@ -259,29 +275,24 @@ def main():
     parser.add_argument("--rebuild", action="store_true", help="build every set again")
     args = parser.parse_args()
 
-    if args.instances:
-        instances = json.loads(args.instances.read_text())["instances"]
-    else:
-        instances = phone_instances(args.device)
-    sets = {}
-    for inst in instances:
-        mods = inst.get("nativeMods") or []
-        if mods:
-            sets.setdefault(game_name(mods), (mods, []))[1].append(inst["name"])
+    saved = json.loads(args.instances.read_text()) if args.instances else phone_instances(args.device)
+    mods = shared_mods(saved)
+    # One set, the app's; kept as a map for build_set's loop.
+    sets = {game_name(mods): (mods, ["every instance"])} if mods else {}
     FRAMEWORKS.mkdir(parents=True, exist_ok=True)
-    # Frameworks no instance plays any more go (HorizonGame itself is build-rust.sh's).
+    # Frameworks the app doesn't play any more go (HorizonGame itself is build-rust.sh's).
     for old in FRAMEWORKS.glob("HorizonGame-*.framework"):
-        if old.stem not in sets:
-            log(f"Removing {old.stem} (no instance uses it now)")
+        if old.stem not in sets and not args.dry_run:
+            log(f"Removing {old.stem} (not the app's native mods any more)")
             shutil.rmtree(old)
     todo = {n: s for n, s in sets.items()
             if args.rebuild or not (FRAMEWORKS / f"{n}.framework").is_dir()}
     if not sets:
-        log("No instance on the phone chose native mods")
+        log("The app has no native mods")
         return
     for name, (mods, names) in sets.items():
         state = "to build" if name in todo else "built"
-        log(f"{', '.join(names)}: {', '.join(m['name'] for m in mods)} ({state})")
+        log(f"Native mods: {', '.join(m['name'] for m in mods)} ({state})")
     if not todo or args.dry_run:
         return
     if not args.trust_native_code:

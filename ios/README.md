@@ -11,10 +11,10 @@ ios/
   rust/winit/          winit 0.30.13 + embedded iOS mode (patched in via the root Cargo.toml)
   sync-upstream.sh     fetch + merge upstream/main + check the iOS build
   install.sh           build the app and install it on the iPhone (cable or Wi-Fi; --native builds
-                       each instance's native mods)
-  remote-install.sh    install from anywhere over Tailscale (an Install page on the tailnet)
-  native-build.py      each instance's native mods, applied with horizon-mixins and built for iOS
-  build-server.py      builds the phone's native mods on the Mac when the phone asks, over Tailscale
+                       the app's native mods)
+  remote-install.sh    install from anywhere: straight on when plugged in or on the Mac's network, else over Tailscale
+  native-build.py      the app's native mods, applied with horizon-mixins and built for iOS
+  build-server.py      builds the phone's native mods on the Mac when the phone asks, on the LAN or over Tailscale
   package-game.sh      wraps a built game as HorizonGame*.framework
   ROADMAP.md           milestones toward a self-contained launcher
   signing.env.example  your Apple team and bundle ID: copy to signing.env (never committed)
@@ -104,18 +104,18 @@ On the iPhone, with Tailscale on, open `https://<this Mac>.<tailnet>.ts.net/hori
 
 ## Native mods
 
-Native mods are patches to the game's source, so each instance's set is compiled into a game framework of its own on the Mac. On the phone: an instance's page → Native mods → Add. Then on the Mac, with the phone connected:
+Native mods are patches to the game's source, so they're compiled on the Mac, all of them into one game framework every instance shares. On the phone: an instance's page → Native mods → Add. Each mod has a switch per instance: turned off, it doesn't run in that instance. It's the game's own switch (`mod.<id>:false` in the instance's `horizon-mods.txt`, the same as Options → Mods in the game), so turning one on or off needs no new build. Each mod honors the switch itself, as on the desktop; an instance with every native mod off plays the standard game. Adding or removing a mod needs a new build. On the Mac, with the phone connected:
 
 ```sh
 ios/install.sh --native --trust-native-code
 ```
 
-Away from the Mac, over Tailscale: leave this running on the Mac (awake, on power)
+From the phone: leave this running on the Mac (awake, on power)
 
 ```sh
 ios/build-server.py --trust-native-code
 ```
 
-and on the phone, Native mods → Remote build → Build on my Mac. The Mac builds every instance's set into a new app and serves it as `remote-install.sh` does; the phone shows the progress, then "Install the new build" opens the Install page in Safari. Only devices signed in to Tailscale as the Mac's own user can ask. The phone learns the Mac's address when the app is built on a Mac running Tailscale (`install.sh` or `remote-install.sh`), so install once that way first.
+and on the phone, Native mods → Remote build → Build on my Mac. The phone asks the Mac on its own network first (`http://<Mac>.local:8767`; only apps built on this Mac are taken, by the secret in `ios/build/build-token`), and over Tailscale only when that doesn't answer (only devices signed in to Tailscale as the Mac's own user). When the phone is plugged in or on the Mac's network (paired for Wi-Fi in Xcode), the Mac installs the new app straight onto it with `devicectl` and reopens it; otherwise it serves it as `remote-install.sh` does and "Install the new build" opens the Install page in Safari. The phone learns both addresses when the app is built on the Mac (`install.sh` or `remote-install.sh`), so install once that way first. The first ask on the LAN shows iOS's Local Network prompt, and macOS may ask to let Python accept incoming connections. `--no-lan` takes builds over Tailscale only; Tailscale itself is optional.
 
 Native mods aren't sandboxed, so building them is the player's decision (`--trust-native-code`). A mod that doesn't apply to this fork's source is left out, and the phone shows it under "Left out".

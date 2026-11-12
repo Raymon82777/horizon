@@ -126,7 +126,7 @@ struct ModrinthProjectPage: View {
         List {
             Section {
                 HStack(spacing: 14) {
-                    ProjectIcon(url: hit.iconURL, size: 64)
+                    ProjectIcon(url: hit.iconURL ?? project?.iconURL, size: 64)
                     VStack(alignment: .leading) {
                         Text(hit.title).font(.title2.bold())
                         if let author = hit.author { Text(author).foregroundStyle(.secondary) }
@@ -134,7 +134,7 @@ struct ModrinthProjectPage: View {
                     Spacer()
                     action
                 }
-                Text(hit.description)
+                Text(hit.description.isEmpty ? project?.description ?? "" : hit.description)
                 if let note { Text(note).font(.footnote).foregroundStyle(.orange) }
             }
             if let gallery = project?.gallery, !gallery.isEmpty {
@@ -154,11 +154,7 @@ struct ModrinthProjectPage: View {
             }
             if let body = project?.body, !body.isEmpty {
                 Section("About") {
-                    Text((try? AttributedString(markdown: body,
-                                                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                         ?? AttributedString(body))
-                        .font(.callout)
-                        .lineLimit(40)
+                    MarkdownView(body)
                 }
             }
             Section("Details") {
@@ -178,7 +174,7 @@ struct ModrinthProjectPage: View {
                 if let source = project?.sourceURL.flatMap(URL.init(string:)) { Link("Source code", destination: source) }
             }
             if let changelog = version?.changelog, !changelog.isEmpty {
-                Section("What's new") { Text(changelog).font(.callout).lineLimit(20) }
+                Section("What's new") { MarkdownView(changelog) }
             }
         }
         .navigationTitle(hit.title)

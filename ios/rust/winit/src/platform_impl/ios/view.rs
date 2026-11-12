@@ -595,9 +595,10 @@ impl WinitView {
                                 location: KeyLocation::Standard,
                                 repeat: false,
                                 logical_key: Key::Character(text.clone()),
-                                physical_key: PhysicalKey::Unidentified(
-                                    NativeKeyCode::Unidentified,
-                                ),
+                                // Horizon iOS: the key a hardware keyboard would send for
+                                // it, so the on-screen keyboard's keys act as keys (a
+                                // game's shortcuts), not only as text.
+                                physical_key: key_for_char(c),
                                 platform_specific: KeyEventExtra {},
                             },
                             is_synthetic: false,
@@ -701,4 +702,27 @@ impl WinitView {
             }),
         );
     }
+}
+
+/// Horizon iOS: the US keyboard key that types `c`, as a hardware keyboard reports it; characters
+/// no key types alone stay unidentified (text only).
+fn key_for_char(c: char) -> PhysicalKey {
+    let code = match c.to_ascii_lowercase() {
+        'a' => KeyCode::KeyA, 'b' => KeyCode::KeyB, 'c' => KeyCode::KeyC, 'd' => KeyCode::KeyD,
+        'e' => KeyCode::KeyE, 'f' => KeyCode::KeyF, 'g' => KeyCode::KeyG, 'h' => KeyCode::KeyH,
+        'i' => KeyCode::KeyI, 'j' => KeyCode::KeyJ, 'k' => KeyCode::KeyK, 'l' => KeyCode::KeyL,
+        'm' => KeyCode::KeyM, 'n' => KeyCode::KeyN, 'o' => KeyCode::KeyO, 'p' => KeyCode::KeyP,
+        'q' => KeyCode::KeyQ, 'r' => KeyCode::KeyR, 's' => KeyCode::KeyS, 't' => KeyCode::KeyT,
+        'u' => KeyCode::KeyU, 'v' => KeyCode::KeyV, 'w' => KeyCode::KeyW, 'x' => KeyCode::KeyX,
+        'y' => KeyCode::KeyY, 'z' => KeyCode::KeyZ,
+        '0' => KeyCode::Digit0, '1' => KeyCode::Digit1, '2' => KeyCode::Digit2, '3' => KeyCode::Digit3,
+        '4' => KeyCode::Digit4, '5' => KeyCode::Digit5, '6' => KeyCode::Digit6, '7' => KeyCode::Digit7,
+        '8' => KeyCode::Digit8, '9' => KeyCode::Digit9,
+        ' ' => KeyCode::Space, '-' => KeyCode::Minus, '=' => KeyCode::Equal, ',' => KeyCode::Comma,
+        '.' => KeyCode::Period, '/' => KeyCode::Slash, ';' => KeyCode::Semicolon, '\'' => KeyCode::Quote,
+        '[' => KeyCode::BracketLeft, ']' => KeyCode::BracketRight, '\\' => KeyCode::Backslash,
+        '`' => KeyCode::Backquote,
+        _ => return PhysicalKey::Unidentified(NativeKeyCode::Unidentified),
+    };
+    PhysicalKey::Code(code)
 }
