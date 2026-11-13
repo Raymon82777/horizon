@@ -168,6 +168,7 @@ impl Game<'_> {
         if let Err(e) = self.save_for_exit() {
             log::warn!("Horizon: failed to save the world on exit: {e}");
         }
+        self.finish_profile();
         self.finish_perf();
     }
     /// ios: the world to disk before the app sits in the background (`touch_input.rs` has the
